@@ -16,43 +16,45 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-const js = @import("../../js/js.zig");
+//! A WebGL 2 context that renders nothing, see webgl_impl.zig.
 
-// Interface object only: getContext("webgl2") returns null, so no instance
-// is ever created. This matches Chrome launched with --disable-webgl, where
-// WebGLRenderingContext and WebGL2RenderingContext still exist on window
-// but no context can be obtained.
+const Canvas = @import("../element/html/Canvas.zig");
+const gen = @import("webgl_generated.zig");
+const impl = @import("webgl_impl.zig");
+
+pub fn registerTypes() []const type {
+    return &.{WebGL2RenderingContext};
+}
+
 const WebGL2RenderingContext = @This();
 
-_: u8 = 0,
+_canvas: *Canvas,
+// getExtension's objects, by index in gen.webgl2_extensions.
+_extensions: [gen.webgl2_extensions.len]?*anyopaque = @splat(null),
 
-fn getParameter(_: *const WebGL2RenderingContext, _: u32) ?[]const u8 {
-    return null;
-}
+const C = impl.Common(WebGL2RenderingContext, 2);
+pub const get_canvas = C.get_canvas;
+pub const get_drawingBufferWidth = C.get_drawingBufferWidth;
+pub const get_drawingBufferHeight = C.get_drawingBufferHeight;
+pub const get_drawingBufferFormat = C.get_drawingBufferFormat;
+pub const get_drawingBufferColorSpace = C.get_drawingBufferColorSpace;
+pub const set_drawingBufferColorSpace = C.set_drawingBufferColorSpace;
+pub const get_unpackColorSpace = C.get_unpackColorSpace;
+pub const set_unpackColorSpace = C.set_unpackColorSpace;
+pub const getParameter = C.getParameter;
+pub const getExtension = C.getExtension;
+pub const getSupportedExtensions = C.getSupportedExtensions;
+pub const getContextAttributes = C.getContextAttributes;
+pub const getShaderParameter = C.getShaderParameter;
+pub const getProgramParameter = C.getProgramParameter;
+pub const getShaderPrecisionFormat = C.getShaderPrecisionFormat;
+pub const createShader = C.createShader;
+pub const checkFramebufferStatus = C.checkFramebufferStatus;
+pub const getAttribLocation = C.getAttribLocation;
+pub const getFragDataLocation = C.getFragDataLocation;
+pub const getUniformLocation = C.getUniformLocation;
+pub const getUniformBlockIndex = C.getUniformBlockIndex;
+pub const clientWaitSync = C.clientWaitSync;
+pub const getInternalformatParameter = C.getInternalformatParameter;
 
-fn getExtension(_: *const WebGL2RenderingContext, _: []const u8) ?js.Object {
-    return null;
-}
-
-fn getSupportedExtensions(_: *const WebGL2RenderingContext) ?[]const []const u8 {
-    return null;
-}
-
-pub const JsApi = struct {
-    pub const bridge = js.Bridge(WebGL2RenderingContext);
-
-    pub const Meta = struct {
-        pub const name = "WebGL2RenderingContext";
-
-        pub var class_id: bridge.ClassId = undefined;
-    };
-
-    pub const getParameter = bridge.function(WebGL2RenderingContext.getParameter, .{});
-    pub const getExtension = bridge.function(WebGL2RenderingContext.getExtension, .{});
-    pub const getSupportedExtensions = bridge.function(WebGL2RenderingContext.getSupportedExtensions, .{});
-};
-
-const testing = @import("../../../testing.zig");
-test "WebApi: WebGL disabled" {
-    try testing.htmlRunner("canvas/webgl_disabled.html", .{});
-}
+pub const JsApi = gen.WebGL2RenderingContextApi(WebGL2RenderingContext);

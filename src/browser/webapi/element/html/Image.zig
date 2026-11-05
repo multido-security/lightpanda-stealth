@@ -42,6 +42,8 @@ _generation: u32 = 0,
 _complete: bool = true,
 _natural_width: u32 = 0,
 _natural_height: u32 = 0,
+// The last load failed: Chrome then renders its 16x16 broken-image icon.
+_broken: bool = false,
 // Hash of the URL the last update selected, so a <picture> mutation that
 // leaves the selection unchanged doesn't restart the load.
 _selected_hash: u64 = 0,
@@ -110,6 +112,42 @@ fn getNaturalHeight(self: *const Image) u32 {
     return self._natural_height;
 }
 
+// The size of the broken-image icon Chrome draws for an image that failed.
+const broken_icon_size = 16;
+
+/// img.width/height: Chrome's rendered size, which without a width/height
+/// attribute is the natural size, or the broken-image icon's once the load
+/// failed. Headless browsers report 0 there, a known check.
+fn renderedDimension(self: *const Image, comptime attr: []const u8, natural: u32) u32 {
+    if (self.asConstElement().getAttributeSafe(.wrap(attr))) |value| {
+        if (HtmlElement.parseInteger(value)) |parsed| {
+            if (parsed >= 0) return @intCast(parsed);
+        }
+    }
+    if (self._broken and self.asConstElement().asConstNode().isConnected()) {
+        return broken_icon_size;
+    }
+    return natural;
+}
+
+fn getWidth(self: *const Image) u32 {
+    return self.renderedDimension("width", self._natural_width);
+}
+
+fn getHeight(self: *const Image) u32 {
+    return self.renderedDimension("height", self._natural_height);
+}
+
+fn setWidth(self: *Image, value: u32, frame: *Frame) !void {
+    const str = try frame.local_arena.print("{d}", .{value});
+    try self.asElement().setAttributeSafe(comptime .wrap("width"), .wrap(str), frame);
+}
+
+fn setHeight(self: *Image, value: u32, frame: *Frame) !void {
+    const str = try frame.local_arena.print("{d}", .{value});
+    try self.asElement().setAttributeSafe(comptime .wrap("height"), .wrap(str), frame);
+}
+
 fn getComplete(self: *const Image) bool {
     return self._complete;
 }
@@ -138,6 +176,7 @@ fn imageAddedCallback(self: *Image, frame: *Frame) !void {
     self._complete = true;
     self._natural_width = 0;
     self._natural_height = 0;
+    self._broken = false;
 
     const src = self.selectSource(frame);
     self._selected_hash = std.hash.Wyhash.hash(0, src);
@@ -153,6 +192,7 @@ fn imageAddedCallback(self: *Image, frame: *Frame) !void {
 
     Frame.resource_load.image(frame, self, src) catch |err| {
         log.debug(.http, "image fetch", .{ .err = err, .src = src });
+        self._broken = true;
         return frame.queueImageEvent(self, .@"error");
     };
 }
@@ -381,8 +421,8 @@ pub const JsApi = struct {
     pub const src = bridge.accessor(Image.getSrc, Image.setSrc, .{ .ce_reactions = true });
     pub const currentSrc = bridge.accessor(Image.getCurrentSrc, null, .{});
     pub const alt = reflect.string("alt");
-    pub const width = reflect.unsignedLong("width", .{});
-    pub const height = reflect.unsignedLong("height", .{});
+    pub const width = bridge.accessor(Image.getWidth, Image.setWidth, .{ .ce_reactions = true });
+    pub const height = bridge.accessor(Image.getHeight, Image.setHeight, .{ .ce_reactions = true });
     pub const crossOrigin = reflect.enumerated("crossorigin", &.{ "anonymous", "use-credentials" }, .{ .missing = null, .nullable = true, .invalid = "anonymous" });
     pub const loading = bridge.accessor(Image.getLoading, Image.setLoading, .{ .ce_reactions = true });
     const reflect = Element.Reflect(Image);

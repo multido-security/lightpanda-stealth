@@ -23,6 +23,7 @@ const Config = @import("../Config.zig");
 const sys_net = @import("../sys/net.zig");
 const libcurl = @import("../sys/libcurl.zig");
 const crypto = @import("../sys/libcrypto.zig");
+const chrome_tls = @import("chrome_tls.zig");
 
 const IpFilter = @import("IpFilter.zig");
 const Certificates = @import("Certificates.zig");
@@ -252,6 +253,28 @@ fn opensocketCallback(
     return fd;
 }
 
+fn sslCtxCallback(comptime set_curves: bool) fn (*libcurl.Curl, *anyopaque, ?*anyopaque) callconv(.c) libcurl.CurlCode {
+    return struct {
+        fn wrap(
+            _: *libcurl.Curl,
+            raw_ssl_ctx: *anyopaque,
+            raw_x509_store: ?*anyopaque,
+        ) callconv(.c) libcurl.CurlCode {
+            const ssl_ctx: *crypto.SSL_CTX = @ptrCast(raw_ssl_ctx);
+            if (raw_x509_store) |raw| {
+                const store: *crypto.X509_STORE = @ptrCast(raw);
+                if (crypto.SSL_CTX_set1_verify_cert_store(ssl_ctx, store) != 1) {
+                    return libcurl.CURLE.ABORTED_BY_CALLBACK;
+                }
+            }
+            if (!chrome_tls.apply(ssl_ctx, .{ .set_curves = set_curves })) {
+                return libcurl.CURLE.SSL_CIPHER;
+            }
+            return libcurl.CURLE.OK;
+        }
+    }.wrap;
+}
+
 pub const Connection = struct {
     _easy: *libcurl.Curl,
     transport: Transport,
@@ -471,8 +494,8 @@ pub const Connection = struct {
 
         // compression, don't remove this. CloudFront will send gzip content
         // even if we don't support it, and then it won't be decompressed.
-        // empty string means: use whatever's available
-        try libcurl.curl_easy_setopt(self._easy, .accept_encoding, "");
+        // Chrome's value and order (libcurl's own default lists deflate first).
+        try libcurl.curl_easy_setopt(self._easy, .accept_encoding, "gzip, deflate, br, zstd");
 
         if (comptime lp.IS_TEST) {
             try libcurl.curl_easy_setopt(self._easy, .connect_to, test_connect_to);
@@ -486,28 +509,13 @@ pub const Connection = struct {
             try libcurl.curl_easy_setopt(self._easy, .proxy, null);
         }
 
-        // TLS.
-        if (config.tlsVerifyHost()) {
-            // Provide certificate store to connection's SSL_CTX.
-            try libcurl.curl_easy_setopt(self._easy, .ssl_ctx_function, &(struct {
-                fn wrap(
-                    _: *libcurl.Curl,
-                    raw_ssl_ctx: *anyopaque,
-                    raw_x509_store: *anyopaque,
-                ) callconv(.c) libcurl.CurlCode {
-                    const ssl_ctx: *crypto.SSL_CTX = @ptrCast(raw_ssl_ctx);
-                    const store: *crypto.X509_STORE = @ptrCast(raw_x509_store);
-
-                    const result = crypto.SSL_CTX_set1_verify_cert_store(ssl_ctx, store);
-                    if (result != 1) {
-                        return libcurl.CURLE.ABORTED_BY_CALLBACK;
-                    }
-                    return libcurl.CURLE.OK;
-                }
-            }).wrap);
-            // Pass our store to CURLOPT_SSL_CTX_FUNCTION.
-            try libcurl.curl_easy_setopt(self._easy, .ssl_ctx_data, certificates.store);
-        } else {
+        // TLS: Chrome's ClientHello (see chrome_tls.zig), and the certificate
+        // store when verifying.
+        const set_curves = config.httpCurves() == null;
+        try libcurl.curl_easy_setopt(self._easy, .ssl_ctx_function, if (set_curves) &sslCtxCallback(true) else &sslCtxCallback(false));
+        // Pass our store (or null) to CURLOPT_SSL_CTX_FUNCTION.
+        try libcurl.curl_easy_setopt(self._easy, .ssl_ctx_data, if (config.tlsVerifyHost()) certificates.store else null);
+        if (!config.tlsVerifyHost()) {
             try libcurl.curl_easy_setopt(self._easy, .ssl_verify_host, false);
             try libcurl.curl_easy_setopt(self._easy, .ssl_verify_peer, false);
 

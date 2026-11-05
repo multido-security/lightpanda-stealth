@@ -509,6 +509,44 @@ pub const BaselineHeaders = struct {
     }
 };
 
+/// Chrome's request header order (a navigation's, which subresource requests
+/// broadly follow). Headers it doesn't list (custom ones, conditional and
+/// range headers) keep their relative order after Content-Type.
+pub const ChromeHeaderOrder = struct {
+    pub const accept_encoding = "gzip, deflate, br, zstd";
+
+    pub const Entry = struct { name: []const u8, value: []const u8 };
+
+    const order = [_][]const u8{
+        "content-length",     "cache-control", "sec-ch-ua",    "sec-ch-ua-mobile",
+        "sec-ch-ua-platform", "origin",        "content-type",
+    };
+    const tail = [_][]const u8{
+        "upgrade-insecure-requests", "user-agent",      "accept",         "sec-fetch-site",
+        "sec-fetch-mode",            "sec-fetch-user",  "sec-fetch-dest", "referer",
+        "accept-encoding",           "accept-language", "cookie",         "priority",
+    };
+
+    fn rank(name: []const u8) usize {
+        for (order, 0..) |h, i| {
+            if (std.ascii.eqlIgnoreCase(h, name)) return i;
+        }
+        for (tail, 0..) |h, i| {
+            if (std.ascii.eqlIgnoreCase(h, name)) return order.len + 1 + i;
+        }
+        return order.len;
+    }
+
+    fn lessThan(_: void, a: Entry, b: Entry) bool {
+        return rank(a.name) < rank(b.name);
+    }
+
+    pub fn sort(entries: []Entry) void {
+        // Stable, so unknown headers keep the order they were added in.
+        std.sort.insertion(Entry, entries, {}, lessThan);
+    }
+};
+
 // Headers _all_ requests include.
 pub fn baselineHeaders(self: *const Client) BaselineHeaders {
     const hints = self.getClientHints();
@@ -3885,8 +3923,37 @@ pub const Transfer = struct {
         // accumulate duplicates.
         conn.clearHeaders();
         const arena = self.arena.allocator();
-        for (self.req_headers.items) |hdr| {
-            try conn.addHeader(arena, hdr.name, hdr.value);
+        {
+            // In the order Chrome sends them: header order is part of what
+            // bot-protection fingerprints. Cookie and Accept-Encoding go in
+            // the list too (libcurl would otherwise append its own at the
+            // end); CURLOPT_ACCEPT_ENCODING still drives decoding.
+            const cookies = try self.getCookieString(arena);
+            const ordered = try arena.alloc(ChromeHeaderOrder.Entry, self.req_headers.items.len + 2);
+            var n: usize = 0;
+            for (self.req_headers.items) |hdr| {
+                ordered[n] = .{ .name = hdr.name, .value = hdr.value };
+                n += 1;
+            }
+            if (self.findRequestHeader("accept-encoding") == null) {
+                ordered[n] = .{ .name = "Accept-Encoding", .value = ChromeHeaderOrder.accept_encoding };
+                n += 1;
+            }
+            if (cookies) |c| merge: {
+                // A Cookie header already on the request takes the jar's too.
+                for (ordered[0..n]) |*hdr| {
+                    if (std.ascii.eqlIgnoreCase(hdr.name, "cookie")) {
+                        hdr.value = try std.fmt.allocPrint(arena, "{s}; {s}", .{ hdr.value, c });
+                        break :merge;
+                    }
+                }
+                ordered[n] = .{ .name = "Cookie", .value = c };
+                n += 1;
+            }
+            ChromeHeaderOrder.sort(ordered[0..n]);
+            for (ordered[0..n]) |hdr| {
+                try conn.addHeader(arena, hdr.name, hdr.value);
+            }
         }
         if (req.body != null and self.findRequestHeader("content-type") == null) {
             // Prevent libcurl from always setting application/x-www-form-urlencoded
@@ -3910,11 +3977,6 @@ pub const Transfer = struct {
         }
         try conn.secretHeaders(&client.network.config.http_headers);
         try conn.commitHeaders();
-
-        // Add cookies from cookie jar.
-        if (try self.getCookieString(self.arena.allocator())) |cookies| {
-            try conn.setCookies(@ptrCast(cookies.ptr));
-        }
 
         conn.transport = .{ .http = self };
 
@@ -5505,7 +5567,7 @@ test "HttpClient: Transfer header layering" {
     try testing.expectEqual("\"Lightpanda\";v=\"1\"", transfer.findRequestHeader("sec-ch-ua").?);
 
     // an invalid User-Agent never enters the list
-    try transfer.setHeader("user-agent", "Mozilla/5.0", .{ .source = .author });
+    try transfer.setHeader("user-agent", "bad\x01ua", .{ .source = .author });
     try testing.expectEqual("Lightpanda/1.0", transfer.findRequestHeader("user-agent").?);
 
     // a valid author User-Agent replaces the default
@@ -6700,22 +6762,8 @@ test "HttpClient: encodedDataLength of a cache hit is the stored body, of a reva
     try testing.expectEqual(raw.not_modified.head.len, try e.fetch("http://127.0.0.1:9582/raw/revalidated", null));
 }
 
-test "HttpClient: baselineHeaders follow --stealth" {
+test "HttpClient: baselineHeaders present as Chrome" {
     const client = &testing.test_browser.http_client;
-    {
-        const baseline = client.baselineHeaders();
-        const headers = baseline.slice();
-        try testing.expectEqual(4, headers.len);
-        try testing.expectEqual("User-Agent", headers[0].name);
-        try testing.expect(std.mem.startsWith(u8, headers[0].value, "Lightpanda/1.0"));
-        try testing.expectEqual("Sec-Ch-Ua", headers[1].name);
-        try testing.expect(std.mem.find(u8, headers[1].value, "Lightpanda") != null);
-        try testing.expectEqual("Sec-Ch-Ua-Full-Version-List", headers[2].name);
-        try testing.expectEqual("Accept-Language", headers[3].name);
-    }
-
-    const saved = testing.enableStealth();
-    defer testing.restoreHttpHeaders(saved);
     {
         const baseline = client.baselineHeaders();
         const headers = baseline.slice();
@@ -6738,7 +6786,7 @@ test "HttpClient: baselineHeaders follow --stealth" {
     try testing.expectEqual("Mozilla/5.0 Override", client.baselineHeaders().slice()[0].value);
 }
 
-test "HttpClient: a browser User-Agent header is only accepted with --stealth" {
+test "HttpClient: a browser User-Agent header is accepted" {
     var pool = ArenaPool.init(testing.allocator, .{});
     defer pool.deinit();
 
@@ -6746,11 +6794,6 @@ test "HttpClient: a browser User-Agent header is only accepted with --stealth" {
     defer arena.release();
 
     var transfer = testTransfer(arena);
-    try transfer.setHeader("User-Agent", "Mozilla/5.0", .{ .source = .author });
-    try testing.expectEqual(null, transfer.findRequestHeader("user-agent"));
-
-    const saved = testing.enableStealth();
-    defer testing.restoreHttpHeaders(saved);
     try transfer.setHeader("User-Agent", "Mozilla/5.0", .{ .source = .author });
     try testing.expectEqual("Mozilla/5.0", transfer.findRequestHeader("user-agent").?);
 }

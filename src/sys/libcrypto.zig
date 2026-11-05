@@ -318,6 +318,29 @@ pub extern fn SSL_CTX_set1_verify_cert_store(ctx: ?*SSL_CTX, store: ?*X509_STORE
 pub extern fn SSL_CTX_new(method: *const SSL_METHOD) ?*SSL_CTX;
 pub extern fn SSL_CTX_free(ctx: *SSL_CTX) void;
 pub extern fn SSL_CTX_set1_curves_list(ctx: *SSL_CTX, curves: [*:0]const u8) c_int;
+pub extern fn SSL_CTX_set_strict_cipher_list(ctx: *SSL_CTX, str: [*:0]const u8) c_int;
+pub extern fn SSL_CTX_set_verify_algorithm_prefs(ctx: *SSL_CTX, prefs: [*]const u16, num_prefs: usize) c_int;
+pub const SSL_OP_NO_TICKET: u32 = 0x00004000;
+pub extern fn SSL_CTX_clear_options(ctx: *SSL_CTX, options: u32) u32;
+pub extern fn SSL_CTX_set_grease_enabled(ctx: *SSL_CTX, enabled: c_int) void;
+pub extern fn SSL_CTX_set_permute_extensions(ctx: *SSL_CTX, enabled: c_int) void;
+pub extern fn SSL_CTX_enable_ocsp_stapling(ctx: *SSL_CTX) void;
+pub extern fn SSL_CTX_enable_signed_cert_timestamps(ctx: *SSL_CTX) void;
+pub const ssl_cert_decompression_func_t = *const fn (ssl: ?*SSL, out: *?*CRYPTO_BUFFER, uncompressed_len: usize, in: [*]const u8, in_len: usize) callconv(.c) c_int;
+pub extern fn SSL_CTX_add_cert_compression_alg(ctx: *SSL_CTX, alg_id: u16, compress: ?*const anyopaque, decompress: ?ssl_cert_decompression_func_t) c_int;
+pub extern fn SSL_CTX_set_info_callback(ctx: *SSL_CTX, cb: ?*const fn (ssl: ?*const SSL, @"type": c_int, value: c_int) callconv(.c) void) void;
+
+const struct_ssl_st = opaque {};
+pub const SSL = struct_ssl_st;
+pub const SSL_CB_HANDSHAKE_START: c_int = 0x10;
+pub extern fn SSL_add_application_settings(ssl: *SSL, proto: [*]const u8, proto_len: usize, settings: ?[*]const u8, settings_len: usize) c_int;
+pub extern fn SSL_set_alps_use_new_codepoint(ssl: *SSL, use_new: c_int) void;
+pub extern fn SSL_set_enable_ech_grease(ssl: *SSL, enable: c_int) void;
+
+const struct_crypto_buffer_st = opaque {};
+pub const CRYPTO_BUFFER = struct_crypto_buffer_st;
+pub extern fn CRYPTO_BUFFER_alloc(out_data: *[*]u8, len: usize) ?*CRYPTO_BUFFER;
+pub extern fn CRYPTO_BUFFER_free(buf: ?*CRYPTO_BUFFER) void;
 
 const struct_ssl_method_st = opaque {};
 pub const SSL_METHOD = struct_ssl_method_st;

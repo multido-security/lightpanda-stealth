@@ -26,6 +26,8 @@ const Frame = @import("../Frame.zig");
 const BodyInit = @import("net/body_init.zig").BodyInit;
 
 const PluginArray = @import("PluginArray.zig");
+const MimeTypeArray = PluginArray.MimeTypeArray;
+const Fingerprint = @import("../Fingerprint.zig");
 const Permissions = @import("Permissions.zig");
 const ModelContext = @import("ModelContext.zig");
 const StorageManager = @import("StorageManager.zig");
@@ -34,6 +36,7 @@ const Geolocation = @import("geolocation/Geolocation.zig");
 const ServiceWorkerContainer = @import("ServiceWorkerContainer.zig");
 const LockManager = @import("LockManager.zig");
 const MediaDevices = @import("media/MediaDevices.zig");
+const BatteryManager = @import("BatteryManager.zig");
 
 const Execution = js.Execution;
 const resource_load = Frame.resource_load;
@@ -44,12 +47,13 @@ comptime {
     // Ensure we don't cause an identity map conflict. Because _geolocation is
     // lazy and, for now, Zig orders the highest-aligned field first, none of
     // the other fields land at offset 0.
-    for ([_][]const u8{ "_plugins", "_permissions", "_storage", "_ua_data" }) |name| {
+    for ([_][]const u8{ "_plugins", "_mime_types", "_permissions", "_storage", "_ua_data" }) |name| {
         if (@offsetOf(Navigator, name) == 0) @compileError(name ++ " aliases the Navigator");
     }
 }
 
 _plugins: PluginArray = .{},
+_mime_types: MimeTypeArray = .{},
 _permissions: Permissions = .{},
 _geolocation: ?*Geolocation = null,
 _storage: StorageManager = .{},
@@ -58,6 +62,7 @@ _service_worker: ?*ServiceWorkerContainer = null,
 _locks: ?*LockManager = null,
 _beacon_bytes: ?*usize = null,
 _media_devices: ?*MediaDevices = null,
+_battery: ?*BatteryManager = null,
 
 pub const init: Navigator = .{};
 
@@ -110,11 +115,11 @@ fn getCookieEnabled(_: *const Navigator) bool {
 }
 
 pub fn getHardwareConcurrency(_: *const Navigator) u32 {
-    return 4;
+    return Fingerprint.get().hardware_concurrency;
 }
 
 pub fn getDeviceMemory(_: *const Navigator) f64 {
-    return 8.0;
+    return Fingerprint.get().device_memory;
 }
 
 fn getMaxTouchPoints(_: *const Navigator) u32 {
@@ -223,6 +228,15 @@ fn getPlugins(self: *Navigator) *PluginArray {
     return &self._plugins;
 }
 
+fn getMimeTypes(self: *Navigator) *MimeTypeArray {
+    return &self._mime_types;
+}
+
+// Desktop Chrome ships its built-in PDF viewer.
+fn getPdfViewerEnabled(_: *const Navigator) bool {
+    return true;
+}
+
 fn getPermissions(self: *Navigator) *Permissions {
     return &self._permissions;
 }
@@ -261,6 +275,16 @@ fn getMediaDevices(self: *Navigator, exec: *Execution) !*MediaDevices {
     const m = try MediaDevices.init(exec);
     self._media_devices = m;
     return m;
+}
+
+// Resolves to the same BatteryManager every time, as Chrome does.
+fn getBattery(self: *Navigator, exec: *Execution) !js.Promise {
+    const battery = self._battery orelse blk: {
+        const b = try BatteryManager.init(exec);
+        self._battery = b;
+        break :blk b;
+    };
+    return exec.js.local.?.resolvePromise(battery);
 }
 
 fn getLocks(self: *Navigator, exec: *Execution) !*LockManager {
@@ -382,8 +406,11 @@ pub const JsApi = struct {
     pub const locks = bridge.accessor(Navigator.getLocks, null, .{});
     pub const userAgentData = bridge.accessor(Navigator.getUserAgentData, null, .{});
     pub const plugins = bridge.accessor(Navigator.getPlugins, null, .{});
+    pub const mimeTypes = bridge.accessor(Navigator.getMimeTypes, null, .{});
+    pub const pdfViewerEnabled = bridge.accessor(Navigator.getPdfViewerEnabled, null, .{});
     pub const geolocation = bridge.accessor(Navigator.getGeolocation, null, .{});
     pub const mediaDevices = bridge.accessor(Navigator.getMediaDevices, null, .{});
+    pub const getBattery = bridge.function(Navigator.getBattery, .{});
     pub const modelContext = bridge.accessor(Navigator.getModelContext, null, .{});
     pub const registerProtocolHandler = bridge.function(Navigator.registerProtocolHandler, .{});
     pub const unregisterProtocolHandler = bridge.function(Navigator.unregisterProtocolHandler, .{});

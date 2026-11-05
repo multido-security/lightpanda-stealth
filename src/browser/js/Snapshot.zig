@@ -325,7 +325,7 @@ fn createSnapshotContext(
         @setEvalBranchQuota(10_000);
         const template_index = comptime bridge.JsApiLookup.getId(JsApi);
         const func = v8.v8__FunctionTemplate__GetFunction(templates[template_index], context);
-        if (@hasDecl(JsApi.Meta, "name") and comptime isNamespace(JsApi) == false) {
+        if (@hasDecl(JsApi.Meta, "name") and comptime isNamespace(JsApi) == false and hasInterfaceObject(JsApi)) {
             const name = JsApi.Meta.name;
             const v8_class_name = v8.v8__String__NewFromUtf8(isolate, name.ptr, v8.kNormal, @intCast(name.len));
             var maybe_result: v8.MaybeBool = undefined;
@@ -797,6 +797,12 @@ fn inheritsFromHtmlElement(comptime JsApi: type) bool {
     return bridge.inheritsOrIs(JsApi, HtmlElement.JsApi);
 }
 
+// Web IDL [LegacyNoInterfaceObject] (e.g. WebGL extension objects): the
+// interface exists, but no constructor is exposed on the global.
+fn hasInterfaceObject(comptime JsApi: type) bool {
+    return !(@hasDecl(JsApi.Meta, "no_interface_object") and JsApi.Meta.no_interface_object);
+}
+
 // Web IDL namespace (CSS, console)
 fn isNamespace(comptime JsApi: type) bool {
     return @hasDecl(JsApi.Meta, "namespace") and JsApi.Meta.namespace;
@@ -847,7 +853,9 @@ fn attachClass(comptime JsApi: type, comptime flatten: bool, isolate: *v8.Isolat
                     // later in this function.
                     continue;
                 }
-                attachAccessorProperty(name, value, isolate, template, signature, define_on orelse prototype);
+                // Namespaces keep accessors as own properties too, as they
+                // do functions (e.g. Object.keys(window.chrome) lists `app`).
+                attachAccessorProperty(name, value, isolate, template, signature, define_on orelse member_template);
             },
             bridge.Function => {
                 if (value.wpt_only and wpt_extensions_enabled == false) {

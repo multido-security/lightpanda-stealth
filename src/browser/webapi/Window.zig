@@ -30,6 +30,7 @@ const History = @import("History.zig");
 const Navigation = @import("navigation/Navigation.zig");
 const Crypto = @import("Crypto.zig");
 const CSS = @import("CSS.zig");
+const ChromeObject = @import("ChromeObject.zig");
 const Navigator = @import("Navigator.zig");
 const ModelContext = @import("ModelContext.zig");
 const Screen = @import("Screen.zig");
@@ -72,6 +73,7 @@ _proto: *EventTarget,
 _frame: *Frame,
 _document: *Document,
 _css: CSS = .init,
+_chrome: ChromeObject = .init,
 _crypto: Crypto = .init,
 _console: Console = .init,
 _navigator: Navigator = .init,
@@ -294,6 +296,10 @@ fn getCrypto(self: *Window) *Crypto {
 
 fn getCSS(self: *Window) *CSS {
     return &self._css;
+}
+
+fn getChrome(self: *Window) *ChromeObject {
+    return &self._chrome;
 }
 
 fn getPerformance(self: *Window) *Performance {
@@ -794,14 +800,15 @@ fn getDevicePixelRatio(_: *const Window, frame: *Frame) f32 {
     return frame.page.getViewport().scale;
 }
 
-// There is no window frame around the viewport and no window position on a
-// screen, so the outer size is the viewport and the position is 0.
+// A regular Chrome window: as wide as the viewport, taller by the tab strip
+// and toolbar. outer == inner is a headless signal. The window sits at the
+// screen's origin.
 fn getOuterWidth(_: *const Window, frame: *Frame) u32 {
     return frame.page.getViewport().width;
 }
 
 fn getOuterHeight(_: *const Window, frame: *Frame) u32 {
-    return frame.page.getViewport().height;
+    return frame.page.getViewport().outerHeight();
 }
 
 fn getScreenPosition(_: *const Window) i32 {
@@ -1056,6 +1063,7 @@ pub const JsApi = struct {
     pub const navigation = bridge.accessor(Window.getNavigation, Window.setNavigation, .{});
     pub const crypto = bridge.accessor(Window.getCrypto, null, .{});
     pub const CSS = bridge.accessor(Window.getCSS, null, .{});
+    pub const chrome = bridge.accessor(Window.getChrome, null, .{});
     pub const customElements = bridge.accessor(Window.getCustomElements, null, .{});
     pub const onabort = EventTarget.handlerAccessor(Window, "abort");
     pub const onanimationcancel = EventTarget.handlerAccessor(Window, "animationcancel");

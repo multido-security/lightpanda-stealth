@@ -31,17 +31,19 @@ const log = lp.log;
 const PROTOCOL_VERSION = "1.3";
 const REVISION = "@9e6ded5ac1ff5e38d930ae52bd9aec09bd1a68e4";
 
-// CDP_USER_AGENT const is used by the CDP server only to identify itself to
-// the CDP clients.
-// Many clients check the CDP server is a Chrome browser.
-//
-// CDP_USER_AGENT const is not used by the browser for the HTTP client (see
-// src/http/client.zig) nor exposed to the JS (see
-// src/browser/html/navigator.zig).
-const CDP_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-const PRODUCT = "Chrome/124.0.6367.29";
+// How the CDP server identifies itself to clients: the same Chrome pages see
+// (Config.HttpHeaders.Chrome). Many clients check they're talking to Chrome,
+// and some (zendriver, puppeteer-extra) read this user agent and push it back
+// through Network/Emulation.setUserAgentOverride, so it must match.
+const Chrome = lp.Config.HttpHeaders.Chrome;
+const CDP_USER_AGENT = Chrome.user_agent;
+const PRODUCT = "Chrome/" ++ Chrome.full_version;
 
-const JS_VERSION = "12.4.254.8";
+// Chrome M ships V8 (M / 10).(M % 10).
+const JS_VERSION = blk: {
+    const m = std.fmt.parseInt(u32, Chrome.major, 10) catch unreachable;
+    break :blk std.fmt.comptimePrint("{d}.{d}.0.0", .{ m / 10, m % 10 });
+};
 const DEV_TOOLS_WINDOW_ID = 1923710101;
 
 pub fn processMessage(cmd: *CDP.Command) !void {

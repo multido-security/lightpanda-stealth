@@ -938,6 +938,7 @@ pub const JsApiLookup = struct {
     ///    const index_id = types.getId(@TypeOf(res));
     ///
     pub const Enum = blk: {
+        @setEvalBranchQuota(100_000);
         var names: [JsApis.len][:0]const u8 = undefined;
         for (JsApis, 0..) |JsApi, i| {
             names[i] = @typeName(JsApi);
@@ -1260,6 +1261,7 @@ pub const PageJsApis = flattenTypes(&.{
     @import("../webapi/Performance.zig"),
     @import("../webapi/EventCounts.zig"),
     @import("../webapi/PluginArray.zig"),
+    @import("../webapi/ChromeObject.zig"),
     @import("../webapi/MutationObserver.zig"),
     @import("../webapi/IntersectionObserver.zig"),
     @import("../webapi/geolocation/Geolocation.zig"),
@@ -1272,6 +1274,7 @@ pub const PageJsApis = flattenTypes(&.{
     @import("../webapi/payment/PaymentMethodChangeEvent.zig"),
     @import("../webapi/webrtc/RTCPeerConnection.zig"),
     @import("../webapi/media/MediaDevices.zig"),
+    @import("../webapi/BatteryManager.zig"),
     @import("../webapi/CustomElementRegistry.zig"),
     @import("../webapi/ResizeObserver.zig"),
     @import("../webapi/IdleDeadline.zig"),
@@ -1290,6 +1293,7 @@ pub const PageJsApis = flattenTypes(&.{
     @import("../webapi/canvas/CanvasRenderingContext2D.zig"),
     @import("../webapi/canvas/WebGLRenderingContext.zig"),
     @import("../webapi/canvas/WebGL2RenderingContext.zig"),
+    @import("../webapi/canvas/webgl_generated.zig"),
     @import("../webapi/canvas/OffscreenCanvas.zig"),
     @import("../webapi/canvas/OffscreenCanvasRenderingContext2D.zig"),
     @import("../webapi/canvas/TextMetrics.zig"),

@@ -35,6 +35,7 @@ const CurlOffT = c.curl_off_t;
 pub const CURLE = struct {
     pub const OK = c.CURLE_OK;
     pub const ABORTED_BY_CALLBACK = c.CURLE_ABORTED_BY_CALLBACK;
+    pub const SSL_CIPHER = c.CURLE_SSL_CIPHER;
 };
 
 pub const CurlHeaderFunction = *const fn ([*]const u8, usize, usize, *anyopaque) callconv(.c) usize;
@@ -43,7 +44,7 @@ pub const curl_writefunc_error: usize = c.CURL_WRITEFUNC_ERROR;
 pub const curl_readfunc_pause: usize = c.CURL_READFUNC_PAUSE;
 pub const CurlReadFunction = *const fn ([*]u8, usize, usize, *anyopaque) callconv(.c) usize;
 const CurlOpenSocketFunction = *const fn (?*anyopaque, c_uint, [*c]CurlSockAddr) callconv(.c) CurlSocket;
-const CurlSslCtxFunction = *const fn (*Curl, *anyopaque, *anyopaque) callconv(.c) CurlCode;
+const CurlSslCtxFunction = *const fn (*Curl, *anyopaque, ?*anyopaque) callconv(.c) CurlCode;
 const CurlDebugFunction = *const fn (*Curl, CurlInfoType, [*c]u8, usize, ?*anyopaque) callconv(.c) c_int;
 
 pub const CurlSockType = enum(c.curlsocktype) {
@@ -670,7 +671,7 @@ pub fn curl_easy_setopt(easy: *Curl, comptime option: CurlOption, value: anytype
         .opensocket_data,
         => @as(?*anyopaque, @ptrCast(value)),
 
-        .ssl_ctx_data => @as(*crypto.X509_STORE, value),
+        .ssl_ctx_data => @as(?*crypto.X509_STORE, value),
         .share => @as(?*CurlSH, value),
 
         .http_version => @as(c_long, @backingInt(@as(CurlHttpVersion, value))),

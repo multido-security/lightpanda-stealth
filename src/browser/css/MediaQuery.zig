@@ -276,10 +276,8 @@ fn evalFeature(text: []const u8, viewport: Viewport) bool {
 
 const max_feature_name_len = 17;
 
-/// Map the deprecated `device-*` features onto their viewport counterparts.
-/// `device-width` is the width of the output device; we have no separate
-/// screen geometry, and `window.screen.width` already reports the viewport
-/// (see webapi/Screen.zig), so both stay consistent.
+/// Map the deprecated `device-*` features onto their viewport counterparts,
+/// evaluated against the screen (see evalNameValue).
 fn stripDevice(lname: []const u8) []const u8 {
     if (std.mem.eql(u8, lname, "device-width")) return "width";
     if (std.mem.eql(u8, lname, "min-device-width")) return "min-width";
@@ -296,7 +294,14 @@ fn evalNameValue(name: []const u8, value: []const u8, viewport: Viewport) bool {
     }
 
     var buf: [max_feature_name_len]u8 = undefined;
-    const lname = stripDevice(std.ascii.lowerString(&buf, name));
+    const raw = std.ascii.lowerString(&buf, name);
+    const lname = stripDevice(raw);
+    if (lname.ptr != raw.ptr) {
+        // `device-width` is the width of the output device: window.screen's
+        // geometry, which scripts cross-check against it.
+        const screen = viewport.screen();
+        return evalNameValue(lname, value, .{ .width = screen.width, .height = screen.height });
+    }
     if (std.mem.eql(u8, lname, "min-width")) {
         const px = parseLengthPx(value) orelse return false;
         return viewport.width >= px;
@@ -429,7 +434,9 @@ test "MediaQuery: min-height / max-height / height" {
 }
 
 test "MediaQuery: device-width / device-height" {
-    const v = Viewport.default;
+    // device-* follow the screen, not the viewport: emulate a 1920x1080 one.
+    const v: Viewport = .{ .width = 1280, .height = 720, .screen_width = 1920, .screen_height = 1080 };
+    try testing.expect(!matches("(device-width: 1280px)", v));
     try testing.expect(matches("(min-device-width: 1px)", v));
     try testing.expect(matches("(min-device-width: 1920px)", v));
     try testing.expect(!matches("(min-device-width: 1921px)", v));
@@ -458,8 +465,14 @@ test "MediaQuery: device-width / device-height" {
     try testing.expect(matches("(min-device-width: 0)", v));
 
     // `device-*` on a viewport smaller than the query, and combined queries
-    const small = Viewport{ .width = 375, .height = 667 };
+    const small = Viewport{ .width = 375, .height = 667, .screen_width = 375, .screen_height = 667 };
     try testing.expect(!matches("(min-device-width: 1024px)", small));
+
+    // Without an emulated screen, the desktop screen holding the window.
+    const screen = Viewport.default.screen();
+    var buf: [64]u8 = undefined;
+    try testing.expect(matches(try std.fmt.bufPrint(&buf, "(device-width: {d}px)", .{screen.width}), Viewport.default));
+    try testing.expect(matches(try std.fmt.bufPrint(&buf, "(device-height: {d}px)", .{screen.height}), Viewport.default));
     try testing.expect(matches("(max-device-width: 480px) and (orientation: portrait)", small));
 }
 

@@ -14,7 +14,8 @@
 
 <script id=outer_size_and_screen_position>
   testing.expectEqual(innerWidth, outerWidth);
-  testing.expectEqual(innerHeight, outerHeight);
+  // Chrome's tab strip and toolbar sit above the viewport.
+  testing.expectEqual(true, outerHeight > innerHeight);
   testing.expectEqual(0, screenX);
   testing.expectEqual(0, screenY);
   testing.expectEqual(0, screenLeft);
@@ -209,10 +210,13 @@
 </script>
 
 <script id=screen>
-  testing.expectEqual(1920, screen.width);
-  testing.expectEqual(1080, screen.height);
-  testing.expectEqual(1920, screen.availWidth);
-  testing.expectEqual(1040, screen.availHeight);
+  // The test profile's screen for the default 1920x1080 viewport (see
+  // Fingerprint.screenFor): large enough to hold the window.
+  testing.expectEqual(2560, screen.width);
+  testing.expectEqual(1440, screen.height);
+  testing.expectEqual(2560, screen.availWidth);
+  testing.expectEqual(true, screen.availHeight < screen.height);
+  testing.expectEqual(true, screen.availHeight >= outerHeight);
   testing.expectEqual(24, screen.colorDepth);
   testing.expectEqual(24, screen.pixelDepth);
   testing.expectEqual(screen, window.screen);

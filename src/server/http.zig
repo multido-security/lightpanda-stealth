@@ -1042,9 +1042,9 @@ pub fn buildJSONVersionResponse(app: *const App, ws_url: []const u8) ![]const u8
     }
     const body_format =
         "{{" ++
-        "\"Browser\": \"Lightpanda/1.0\", " ++
+        "\"Browser\": \"Chrome/" ++ lp.Config.HttpHeaders.Chrome.full_version ++ "\", " ++
         "\"Protocol-Version\": \"1.3\", " ++
-        "\"User-Agent\": \"Lightpanda/1.0\", " ++
+        "\"User-Agent\": \"" ++ lp.Config.HttpHeaders.Chrome.user_agent ++ "\", " ++
         "\"Lightpanda-Version\": \"" ++ lp.build_config.version ++ "\", " ++
         "\"webSocketDebuggerUrl\": {f}" ++
         "}}";

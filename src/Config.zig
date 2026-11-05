@@ -285,7 +285,7 @@ const CommonOptions = .{
     .{ .name = "web_bot_auth_keyid", .type = ?[]const u8 },
     .{ .name = "web_bot_auth_domain", .type = ?[]const u8 },
     .{ .name = "user_agent", .type = ?[]const u8, .validator = userAgentValidator },
-    .{ .name = "stealth", .type = bool },
+    .{ .name = "stealth", .type = bool, .deprecated = "stealth is always on" },
     .{ .name = "locale", .type = [:0]const u8, .default = HttpHeaders.default_locale, .validator = localeValidator },
     .{ .name = "lang", .type = .{ .cli = [:0]const u8, .memory = ?Lang }, .validator = langValidator },
     .{ .name = "timezone", .type = ?[:0]const u8, .validator = timezoneValidator },
@@ -554,13 +554,17 @@ pub fn init(allocator: Allocator, exec_name: []const u8, mode: Mode) !Config {
                     m.load_resources.stylesheet = true;
                 }
             }
-            // The agent-facing modes read visibility, which is wrong without
-            // external stylesheets: a menu hidden by an author class looks
-            // open. An explicit --load-resources replaces this default.
+            // Load what a real browser loads: a client that never fetches
+            // images, frames or stylesheets stands out to bot protection
+            // (and page scripts probing img/iframe loads notice too).
+            // Stylesheets also make visibility right for the agent modes. An
+            // explicit --load-resources replaces this default.
             if (@hasField(@TypeOf(m.*), "load_resources")) {
                 const given = m.load_resources != LoadResources{};
-                if (!given and (config.command == .mcp or config.command == .agent)) {
+                if (!given) {
                     m.load_resources.stylesheet = true;
+                    m.load_resources.image = true;
+                    m.load_resources.iframe = true;
                 }
             }
         },
@@ -792,9 +796,11 @@ pub fn userAgent(self: *const Config) ?[]const u8 {
     };
 }
 
+/// Lightpanda always presents as a regular desktop Chrome (see
+/// HttpHeaders.Chrome). The --stealth flag is accepted but has no effect.
 pub fn stealth(self: *const Config) bool {
     return switch (self.mode) {
-        inline .serve, .fetch, .mcp, .agent => |opts| opts.stealth,
+        .serve, .fetch, .mcp, .agent => true,
         else => false,
     };
 }
@@ -1143,12 +1149,14 @@ pub const HttpHeaders = struct {
         .{ .brand = "Lightpanda", .version = "1", .full_version = lp.build_config.version },
     });
 
-    /// What --stealth presents as: a regular desktop Chrome, headful and not
+    /// What Lightpanda presents as: a regular desktop Chrome, headful and not
     /// automated, on the platform Lightpanda was built for. Bump `major` and
-    /// `full_version` together.
+    /// `full_version` together (current stable: versionhistory.googleapis.com
+    /// /v1/chrome/platforms/linux/channels/stable/versions); the GREASE brand
+    /// and the brand order follow from `major`.
     pub const Chrome = struct {
-        pub const major = "141";
-        pub const full_version = "141.0.7390.54";
+        pub const major = "157";
+        pub const full_version = "157.0.8103.38";
 
         const os_token = switch (builtin.target.os.tag) {
             .macos => "Macintosh; Intel Mac OS X 10_15_7",
@@ -1178,11 +1186,36 @@ pub const HttpHeaders = struct {
 
         pub const vendor = "Google Inc.";
 
-        pub const hints: ClientHints = .init(&.{
-            .{ .brand = "Google Chrome", .version = major, .full_version = full_version },
-            .{ .brand = "Not?A_Brand", .version = "8", .full_version = "8.0.0.0" },
-            .{ .brand = "Chromium", .version = major, .full_version = full_version },
-        });
+        pub const hints: ClientHints = .init(&brandList());
+
+        /// Chromium's GenerateBrandVersionList
+        /// (components/embedder_support/user_agent_utils.cc), seeded with the
+        /// major version: a GREASE brand, then Chromium and Google Chrome,
+        /// shuffled by a seed-picked permutation. A hardcoded GREASE brand that
+        /// doesn't match the version is a known bot signal.
+        fn brandList() [3]Brand {
+            const seed = std.fmt.parseInt(usize, major, 10) catch unreachable;
+            const greasey_chars = [_][:0]const u8{ " ", "(", ":", "-", ".", "/", ")", ";", "=", "?", "_" };
+            const greased_versions = [_][:0]const u8{ "8", "99", "24" };
+            const orders = [_][3]usize{ .{ 0, 1, 2 }, .{ 0, 2, 1 }, .{ 1, 0, 2 }, .{ 1, 2, 0 }, .{ 2, 0, 1 }, .{ 2, 1, 0 } };
+
+            const grease_version = greased_versions[seed % greased_versions.len];
+            const in_order = [3]Brand{
+                .{
+                    .brand = "Not" ++ greasey_chars[seed % greasey_chars.len] ++ "A" ++ greasey_chars[(seed + 1) % greasey_chars.len] ++ "Brand",
+                    .version = grease_version,
+                    .full_version = grease_version ++ ".0.0.0",
+                },
+                .{ .brand = "Chromium", .version = major, .full_version = full_version },
+                .{ .brand = "Google Chrome", .version = major, .full_version = full_version },
+            };
+            const order = orders[seed % orders.len];
+            var shuffled: [3]Brand = undefined;
+            for (in_order, order) |b, i| {
+                shuffled[i] = b;
+            }
+            return shuffled;
+        }
     };
 
     // The neutral default: some bot-protection frontends (e.g. Akamai on
@@ -1191,11 +1224,12 @@ pub const HttpHeaders = struct {
     const default_locale: [:0]const u8 = "en-US";
 
     // Document-navigation Accept value Chrome sends.
-    pub const navigation_accept: [:0]const u8 = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+    pub const navigation_accept: [:0]const u8 = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
 
     user_agent: [:0]const u8, // User agent value (e.g. "Lightpanda/1.0")
 
-    // --stealth: present as a regular desktop Chrome (see `Chrome`).
+    // Present as a regular desktop Chrome (see `Chrome`). Always true outside
+    // tests, which may switch it off to exercise Lightpanda's own identity.
     stealth: bool,
     client_hints: *const ClientHints,
 
@@ -1436,8 +1470,8 @@ pub fn parseArgs(allocator: Allocator, proc_args: std.process.Args) !Config {
 
     switch (command) {
         inline .serve, .fetch, .mcp, .agent => |opts| if (opts.user_agent) |ua| {
-            validateUserAgent(ua, .{ .stealth = opts.stealth }) catch |err| {
-                log.fatal(.app, "invalid user-agent", .{ .err = err, .hint = "can't contain Mozilla unless --stealth is set" });
+            validateUserAgent(ua, .{ .stealth = true }) catch |err| {
+                log.fatal(.app, "invalid user-agent", .{ .err = err, .hint = "must be printable ASCII" });
                 return error.InvalidArgument;
             };
         },
@@ -1530,33 +1564,22 @@ test "Config: advertiseHost preserves concrete host when not a wildcard" {
     try std.testing.expectEqualStrings("127.0.0.1", config.advertiseHost());
 }
 
-test "Config: parseArgs refuses a mozilla user-agent" {
+test "Config: parseArgs refuses a non-printable user-agent" {
     log.expectLog(&.{.app});
-    // The check runs once every option is parsed (--stealth lifts it), so
-    // parseArgs has allocated by then; an arena stands in for main's.
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const argv = [_][*:0]const u8{ "lightpanda", "fetch", "--user-agent", "mozilla/1.0", "https://example.com" };
+    const argv = [_][*:0]const u8{ "lightpanda", "fetch", "--user-agent", "bad\x01ua", "https://example.com" };
     const proc_args: std.process.Args = .{ .vector = &argv };
     try std.testing.expectError(error.InvalidArgument, parseArgs(arena.allocator(), proc_args));
 }
 
-test "Config: parseArgs --stealth" {
+test "Config: parseArgs presents as Chrome by default" {
     // parseArgs allocations live for the process; an arena stands in for main's.
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
     {
-        // Default: Lightpanda's own user agent and client hints.
         const argv = [_][*:0]const u8{ "lightpanda", "serve" };
-        const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
-        try std.testing.expectEqual(false, config.stealth());
-        try std.testing.expectEqual(false, config.http_headers.stealth);
-        try std.testing.expectEqualStrings("Lightpanda/1.0", config.http_headers.user_agent);
-        try std.testing.expect(std.mem.find(u8, config.http_headers.client_hints.sec_ch_ua, "Lightpanda") != null);
-    }
-    {
-        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--stealth" };
         const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
         try std.testing.expectEqual(true, config.stealth());
         try std.testing.expectEqual(true, config.http_headers.stealth);
@@ -1566,28 +1589,40 @@ test "Config: parseArgs --stealth" {
         try std.testing.expect(std.mem.find(u8, ua, "Chrome/" ++ HttpHeaders.Chrome.major ++ ".0.0.0") != null);
         try std.testing.expect(std.mem.find(u8, ua, "Headless") == null);
         try std.testing.expect(std.mem.find(u8, ua, "Lightpanda") == null);
-        try std.testing.expectEqualStrings(
-            "\"Google Chrome\";v=\"" ++ HttpHeaders.Chrome.major ++ "\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"" ++ HttpHeaders.Chrome.major ++ "\"",
-            config.http_headers.client_hints.sec_ch_ua,
-        );
+        try std.testing.expect(std.mem.find(u8, config.http_headers.client_hints.sec_ch_ua, "Lightpanda") == null);
     }
     {
+        // The deprecated flag is still accepted.
         const argv = [_][*:0]const u8{ "lightpanda", "fetch", "--stealth", "https://example.com" };
         const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
         try std.testing.expectEqualStrings(HttpHeaders.Chrome.user_agent, config.http_headers.user_agent);
     }
     {
-        // An explicit --user-agent still wins, and may then look like a
-        // browser, whatever the flag order.
-        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--user-agent", "Mozilla/5.0 Custom", "--stealth" };
+        // An explicit --user-agent still wins, and may look like a browser.
+        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--user-agent", "Mozilla/5.0 Custom" };
         const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
         try std.testing.expectEqualStrings("Mozilla/5.0 Custom", config.http_headers.user_agent);
         try std.testing.expectEqual(true, config.http_headers.stealth);
     }
     {
-        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--stealth", "--user-agent-suffix", "x/1" };
+        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--user-agent-suffix", "x/1" };
         const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
         try std.testing.expectEqualStrings(HttpHeaders.Chrome.user_agent ++ " x/1", config.http_headers.user_agent);
+    }
+}
+
+test "Config: Chrome GREASE brands follow the major version" {
+    // Chrome 157's real Sec-Ch-Ua, as Chromium's GenerateBrandVersionList
+    // produces it for seed 157.
+    if (std.mem.eql(u8, HttpHeaders.Chrome.major, "157")) {
+        try std.testing.expectEqualStrings(
+            "\"Not-A.Brand\";v=\"99\", \"Google Chrome\";v=\"157\", \"Chromium\";v=\"157\"",
+            HttpHeaders.Chrome.hints.sec_ch_ua,
+        );
+        try std.testing.expectEqualStrings(
+            "\"Not-A.Brand\";v=\"99.0.0.0\", \"Google Chrome\";v=\"157.0.8103.38\", \"Chromium\";v=\"157.0.8103.38\"",
+            HttpHeaders.Chrome.hints.sec_ch_ua_full_version_list,
+        );
     }
 }
 
@@ -1596,8 +1631,8 @@ test "Config: parseArgs --lang" {
     defer arena.deinit();
 
     {
-        // --stealth keeps Chrome's en-US default.
-        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--stealth" };
+        // Chrome's en-US default.
+        const argv = [_][*:0]const u8{ "lightpanda", "serve" };
         const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
         try std.testing.expectEqualStrings("en-US", config.locale());
         try std.testing.expectEqualStrings("en-US,en;q=0.9", config.http_headers.accept_language.header);
@@ -1616,7 +1651,7 @@ test "Config: parseArgs --lang" {
     }
     {
         // A single tag expands like --locale, and wins over it.
-        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--locale", "it", "--lang", "de-DE", "--stealth" };
+        const argv = [_][*:0]const u8{ "lightpanda", "serve", "--locale", "it", "--lang", "de-DE" };
         const config = try parseArgs(arena.allocator(), .{ .vector = &argv });
         try std.testing.expectEqualStrings("de-DE", config.locale());
         try std.testing.expectEqualStrings("de-DE,de;q=0.9,en;q=0.8", config.http_headers.accept_language.header);
@@ -1981,12 +2016,11 @@ fn accumulateValidator(allocator: Allocator, args: *std.process.Args.Iterator, f
     field.* = try std.mem.join(allocator, ",", &.{ existing, str });
 }
 
-// Only the printable check here: whether "Mozilla" is allowed depends on
-// --stealth, which may come later on the command line (see parseArgs).
+// Only the printable check here, see parseArgs.
 fn userAgentValidator(allocator: Allocator, args: *std.process.Args.Iterator, ua: *?[]const u8) !void {
     const str = args.next() orelse return error.MissingArgument;
     validateUserAgent(str, .{ .stealth = true }) catch |err| {
-        log.fatal(.app, "invalid user-agent", .{ .err = err, .hint = "must be printable ASCII and can't contain Mozilla" });
+        log.fatal(.app, "invalid user-agent", .{ .err = err, .hint = "must be printable ASCII" });
         return error.InvalidArgument;
     };
 
@@ -2150,9 +2184,10 @@ test "Config: parseArgs --load-resources defaults stylesheets on for mcp and age
     defer arena.deinit();
 
     const cases = [_]struct { argv: []const [*:0]const u8, stylesheet: bool, image: bool, beacon: bool = false }{
-        .{ .argv = &.{ "lightpanda", "mcp" }, .stylesheet = true, .image = false },
-        .{ .argv = &.{ "lightpanda", "agent", "--no-llm" }, .stylesheet = true, .image = false },
-        .{ .argv = &.{ "lightpanda", "fetch", "https://example.com" }, .stylesheet = false, .image = false },
+        .{ .argv = &.{ "lightpanda", "mcp" }, .stylesheet = true, .image = true },
+        .{ .argv = &.{ "lightpanda", "agent", "--no-llm" }, .stylesheet = true, .image = true },
+        .{ .argv = &.{ "lightpanda", "fetch", "https://example.com" }, .stylesheet = true, .image = true },
+        .{ .argv = &.{ "lightpanda", "serve" }, .stylesheet = true, .image = true },
         .{ .argv = &.{ "lightpanda", "mcp", "--load-resources", "none" }, .stylesheet = false, .image = false },
         .{ .argv = &.{ "lightpanda", "mcp", "--load-resources", "image" }, .stylesheet = false, .image = true },
         .{ .argv = &.{ "lightpanda", "fetch", "--load-resources", "beacon", "https://example.com" }, .stylesheet = false, .image = false, .beacon = true },

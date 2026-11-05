@@ -1293,7 +1293,7 @@ fn weaknessNote(arena: std.mem.Allocator, frame: *const lp.Frame) !?[]const u8 {
     const status = &frame.page.status;
     var notes: std.ArrayList([]const u8) = .empty;
     if (status.unsupported.get(.webgl) > 0) {
-        try notes.append(arena, "The page asked for WebGL, which Lightpanda does not provide: anything it renders that way is missing.");
+        try notes.append(arena, "The page uses WebGL, which Lightpanda does not render: anything it draws that way is missing.");
     }
     const iframes = status.skipped.get(.iframe);
     if (iframes > 0) {
@@ -3305,7 +3305,7 @@ test "tools: goto says what a full browser would have shown" {
         \\{"url":"http://localhost:9582/src/browser/tests/cdp/page_status.html"}
     , .{});
     const r = try call(aa, session, &registry, "goto", args, .{ .nav_note = true, .source = .user });
-    try std.testing.expectEqualStrings("The page asked for WebGL, which Lightpanda does not provide: anything it renders that way is missing. 1 iframe(s) were not loaded: subframe loading is off.\n\nNavigated. HTTP 200 OK.", r.text);
+    try std.testing.expectEqualStrings("The page uses WebGL, which Lightpanda does not render: anything it draws that way is missing. 1 iframe(s) were not loaded: subframe loading is off.\n\nNavigated. HTTP 200 OK.", r.text);
 }
 
 test "tools: a read tool navigating by url flags an error status" {
@@ -3902,7 +3902,7 @@ test "download: a redirect's Set-Cookie lands in the jar and the next hop carrie
 
     const body = try std.Io.Dir.cwd().readFileAlloc(lp.io, path, testing.arena_allocator, .limited(8192));
     try std.testing.expect(std.mem.find(u8, body, "lp_redirect=1") != null);
-    try std.testing.expect(std.mem.find(u8, body, "Lightpanda/") != null);
+    try std.testing.expect(std.mem.find(u8, body, "Chrome/") != null);
 }
 
 test "download: a multi-megabyte body arrives intact" {

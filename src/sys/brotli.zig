@@ -73,4 +73,5 @@ pub extern fn BrotliDecoderCreateInstance(alloc_func: brotli_alloc_func, free_fu
 pub extern fn BrotliDecoderDecompressStream(state: *BrotliDecoderState, available_in: *usize, next_in: *[*c]const u8, available_out: *usize, next_out: ?*[*c]u8, total_out: ?*usize) BrotliDecoderResult;
 pub extern fn BrotliDecoderHasMoreOutput(state: *const BrotliDecoderState) BROTLI_BOOL;
 pub extern fn BrotliDecoderDestroyInstance(state: *BrotliDecoderState) void;
+pub extern fn BrotliDecoderDecompress(encoded_size: usize, encoded_buffer: [*]const u8, decoded_size: *usize, decoded_buffer: [*]u8) BrotliDecoderResult;
 pub extern fn BrotliDecoderTakeOutput(state: *BrotliDecoderState, size: *usize) [*c]const u8;

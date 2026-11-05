@@ -28,6 +28,7 @@ const Snapshot = @import("browser/js/Snapshot.zig");
 const Platform = @import("browser/js/Platform.zig");
 const screenshot = @import("browser/screenshot.zig");
 const Sanitizer = @import("browser/webapi/Sanitizer.zig");
+const Fingerprint = @import("browser/Fingerprint.zig");
 
 const Network = @import("network/Network.zig");
 const Telemetry = @import("telemetry/telemetry.zig").Telemetry;
@@ -52,6 +53,8 @@ default_sanitizer: *Sanitizer,
 render_fonts: screenshot.Fonts,
 
 pub fn init(allocator: Allocator, config: *const Config) !*App {
+    Fingerprint.randomize();
+
     const platform = try Platform.init(.{
         .v8_flags = config.v8Flags(),
         .locale = config.locale(),

@@ -41,6 +41,7 @@ const PaymentResponse = @import("payment/PaymentResponse.zig");
 const RTCDataChannel = @import("webrtc/RTCDataChannel.zig");
 const RTCPeerConnection = @import("webrtc/RTCPeerConnection.zig");
 const MediaDevices = @import("media/MediaDevices.zig");
+const BatteryManager = @import("BatteryManager.zig");
 const SharedWorker = @import("SharedWorker.zig");
 const ServiceWorker = @import("ServiceWorker.zig");
 const ServiceWorkerContainer = @import("ServiceWorkerContainer.zig");
@@ -102,6 +103,7 @@ pub const Type = enum(u8) {
     idb_request,
     idb_transaction,
     media_devices,
+    battery_manager,
     media_query_list,
     message_port,
     navigation,
@@ -153,6 +155,7 @@ pub fn Subtype(comptime tag: Type) type {
         .idb_request => IDBRequest,
         .idb_transaction => IDBTransaction,
         .media_devices => MediaDevices,
+        .battery_manager => BatteryManager,
         .media_query_list => MediaQueryList,
         .message_port => MessagePort,
         .navigation => Navigation,
@@ -439,6 +442,7 @@ pub fn format(self: *EventTarget, writer: *std.Io.Writer) !void {
         .payment_response => writer.writeAll("<PaymentResponse>"),
         .permission_status => writer.writeAll("<PermissionStatus>"),
         .media_devices => writer.writeAll("<MediaDevices>"),
+        .battery_manager => writer.writeAll("<BatteryManager>"),
         .rtc_data_channel => writer.writeAll("<RTCDataChannel>"),
         .rtc_peer_connection => writer.writeAll("<RTCPeerConnection>"),
         .navigation_history_entry => writer.writeAll("<NavigationHistoryEntry>"),
@@ -473,6 +477,7 @@ pub fn toString(self: *EventTarget) []const u8 {
         .performance => return "[object Performance]",
         .permission_status => return "[object PermissionStatus]",
         .media_devices => return "[object MediaDevices]",
+        .battery_manager => return "[object BatteryManager]",
         .rtc_data_channel => return "[object RTCDataChannel]",
         .rtc_peer_connection => return "[object RTCPeerConnection]",
         .screen => return "[object Screen]",

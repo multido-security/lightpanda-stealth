@@ -5,7 +5,7 @@
   // Navigator should be accessible from window
   testing.expectEqual(navigator, window.navigator);
   testing.expectEqual(true, navigator.userAgent.length > 0);
-  testing.expectEqual(true, navigator.userAgent.includes('Lightpanda'));
+  testing.expectEqual(true, navigator.userAgent.includes('Chrome/'));
   testing.expectEqual('Netscape', navigator.appName);
   testing.expectEqual(true, navigator.appVersion.startsWith('5.0 ('));
   testing.expectEqual(true, navigator.platform.length > 0);
@@ -21,9 +21,9 @@
   testing.expectEqual(true, navigator.onLine);
   testing.expectEqual(true, navigator.cookieEnabled);
   testing.expectEqual(true, navigator.hardwareConcurrency > 0);
-  testing.expectEqual(4, navigator.hardwareConcurrency);
+  testing.expectEqual(8, navigator.hardwareConcurrency);
   testing.expectEqual(0, navigator.maxTouchPoints);
-  testing.expectEqual('', navigator.vendor);
+  testing.expectEqual('Google Inc.', navigator.vendor);
   testing.expectEqual('Gecko', navigator.product);
   testing.expectEqual(false, navigator.javaEnabled());
   testing.expectEqual(false, navigator.webdriver);
@@ -52,7 +52,8 @@
 </script>
 
 <script id=navigator_plugins_named_presence>
-  // No plugin is exposed, so PluginArray has no named properties at all.
+  // Only the exposed plugins' names are named properties.
+  testing.expectEqual(true, 'PDF Viewer' in navigator.plugins);
   testing.expectEqual(false, 'anything' in navigator.plugins);
   testing.expectEqual(false, Object.hasOwn(navigator.plugins, 'anything'));
   testing.expectEqual(null, navigator.plugins.namedItem('anything'));
@@ -64,7 +65,7 @@
 <script id=navigator_plugins_iterable>
   // WebIDL: indexed getter => @@iterator (Chrome: [...navigator.plugins] works)
   testing.expectEqual('function', typeof navigator.plugins[Symbol.iterator]);
-  testing.expectEqual(0, [...navigator.plugins].length);
+  testing.expectEqual(5, [...navigator.plugins].length);
 </script>
 
 <script id=navigator_native_descriptor_walk>
@@ -133,9 +134,8 @@
   const validUAPlatforms = ['macOS', 'Windows', 'Linux', 'FreeBSD', 'Unknown'];
   testing.expectEqual(true, validUAPlatforms.includes(navigator.userAgentData.platform));
 
-  testing.expectEqual(1, navigator.userAgentData.brands.length);
-  testing.expectEqual('Lightpanda', navigator.userAgentData.brands[0].brand);
-  testing.expectEqual("1.1.0-", navigator.userAgentData.brands[0].version.substring(0,6));
+  testing.expectEqual(3, navigator.userAgentData.brands.length);
+  testing.expectEqual(true, navigator.userAgentData.brands.some((b) => b.brand === 'Chromium'));
 
   // Same instance returned on repeated access
   testing.expectEqual(true, navigator.userAgentData === navigator.userAgentData);
@@ -144,7 +144,7 @@
   testing.expectEqual(false, json.mobile);
   testing.expectEqual(navigator.userAgentData.platform, json.platform);
   testing.expectEqual(true, Array.isArray(json.brands));
-  testing.expectEqual('Lightpanda', json.brands[0].brand);
+  testing.expectEqual(true, json.brands.some((b) => b.brand === 'Google Chrome'));
 </script>
 
 <script id=userAgentData_highEntropy type=module>
@@ -160,8 +160,8 @@
       testing.expectEqual(navigator.userAgentData.platform, v.platform);
       testing.expectEqual(true, Array.isArray(v.brands));
       testing.expectEqual(true, Array.isArray(v.fullVersionList));
-      testing.expectEqual('Lightpanda', v.fullVersionList[0].brand);
-      testing.expectEqual('1.1.0-', v.uaFullVersion.substring(0,6));
+      testing.expectEqual(true, v.fullVersionList.some((b) => b.brand === 'Google Chrome'));
+      testing.expectEqual(true, /^\d+\.0\.\d+\.\d+$/.test(v.uaFullVersion));
       testing.expectEqual(false, v.wow64);
       testing.expectEqual(true, Array.isArray(v.formFactor));
       testing.expectEqual('Desktop', v.formFactor[0]);
@@ -170,10 +170,23 @@
 </script>
 
 <script id=getBattery type=module>
-  // Like Firefox, we don't expose navigator.getBattery. Sites already
-  // have to handle it being undefined, so this is a real-browser shape
-  // rather than a stub that always rejects.
-  testing.expectEqual('undefined', typeof navigator.getBattery);
+  {
+    // Chrome has it (Firefox and Safari don't): a desktop, plugged in and full.
+    const state = await testing.async();
+    const b1 = await navigator.getBattery();
+    const b2 = await navigator.getBattery();
+    state.resolve();
+    await state.done(() => {
+      testing.expectEqual(true, b1 === b2);
+      testing.expectEqual(true, b1 instanceof BatteryManager);
+      testing.expectEqual(true, b1 instanceof EventTarget);
+      testing.expectEqual(true, b1.charging);
+      testing.expectEqual(0, b1.chargingTime);
+      testing.expectEqual(Infinity, b1.dischargingTime);
+      testing.expectEqual(1, b1.level);
+      testing.expectEqual(null, b1.onlevelchange);
+    });
+  }
 </script>
 
 

@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+const Fingerprint = @import("Fingerprint.zig");
+
 const Viewport = @This();
 
 width: u32,
@@ -37,6 +39,37 @@ pub const Orientation = struct {
         @"landscape-secondary",
     };
 };
+
+/// What window.screen reports: the emulated screen when one is set (CDP
+/// Emulation), else a common desktop screen that holds a Chrome window of
+/// this viewport's size (see Fingerprint.screenFor).
+pub fn screen(self: *const Viewport) Fingerprint.Screen {
+    if (self.isScreenEmulated()) {
+        return .{ .width = self.screen_width orelse self.width, .height = self.screen_height orelse self.height };
+    }
+    return Fingerprint.get().screenFor(self.width, self.height);
+}
+
+/// screen.availHeight. An emulated screen has no OS-reserved area.
+pub fn availHeight(self: *const Viewport) u32 {
+    if (self.isScreenEmulated()) {
+        return self.screen().height;
+    }
+    return self.screen().availHeight();
+}
+
+/// window.outerHeight: the viewport plus Chrome's tab strip and toolbar.
+/// Under screen emulation Chrome reports the emulated size, frame included.
+pub fn outerHeight(self: *const Viewport) u32 {
+    if (self.isScreenEmulated()) {
+        return self.height;
+    }
+    return self.height + Fingerprint.window_chrome_height;
+}
+
+fn isScreenEmulated(self: *const Viewport) bool {
+    return self.screen_width != null or self.screen_height != null;
+}
 
 pub const default = Viewport{
     .width = 1920,

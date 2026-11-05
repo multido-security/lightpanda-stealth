@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <script src="testing.js"></script>
 
-<!-- Run with --stealth: presents as a regular (headful, non-automated) desktop Chrome. -->
+<!-- Lightpanda presents as a regular (headful, non-automated) desktop Chrome. -->
 <script id=stealth_navigator>
   const ua = navigator.userAgent;
   testing.expectEqual(true, ua.startsWith('Mozilla/5.0 ('));
@@ -36,10 +36,12 @@
   const major = navigator.userAgent.match(/Chrome\/(\d+)\./)[1];
   const brands = navigator.userAgentData.brands;
   testing.expectEqual(3, brands.length);
-  testing.expectEqual('Google Chrome', brands[0].brand);
-  testing.expectEqual(major, brands[0].version);
-  testing.expectEqual('Chromium', brands[2].brand);
-  testing.expectEqual(major, brands[2].version);
+  const byName = (list, name) => list.find((b) => b.brand === name);
+  testing.expectEqual(major, byName(brands, 'Google Chrome').version);
+  testing.expectEqual(major, byName(brands, 'Chromium').version);
+  // The GREASE brand: "Not" + a char + "A" + a char + "Brand".
+  const grease = brands.find((b) => b.brand.startsWith('Not'));
+  testing.expectEqual(true, /^Not.A.Brand$/.test(grease.brand));
   testing.expectEqual(false, navigator.userAgentData.mobile);
 
   const uaPlatforms = { 'Linux x86_64': 'Linux', 'MacIntel': 'macOS', 'Win32': 'Windows' };
@@ -55,10 +57,10 @@
 
     await state.done(() => {
       const major = navigator.userAgent.match(/Chrome\/(\d+)\./)[1];
-      testing.expectEqual('Google Chrome', v.fullVersionList[0].brand);
-      testing.expectEqual(true, v.fullVersionList[0].version.startsWith(major + '.'));
-      testing.expectEqual(v.fullVersionList[0].version, v.uaFullVersion);
-      testing.expectEqual(major, v.brands[0].version);
+      const chrome = v.fullVersionList.find((b) => b.brand === 'Google Chrome');
+      testing.expectEqual(true, chrome.version.startsWith(major + '.'));
+      testing.expectEqual(chrome.version, v.uaFullVersion);
+      testing.expectEqual(true, v.platformVersion.length > 0);
     });
   }
 </script>
@@ -76,3 +78,45 @@
     });
   }
 </script>
+
+<script id=stealth_plugins>
+  testing.expectEqual(5, navigator.plugins.length);
+  testing.expectEqual('PDF Viewer', navigator.plugins[0].name);
+  testing.expectEqual('internal-pdf-viewer', navigator.plugins[0].filename);
+  testing.expectEqual('Portable Document Format', navigator.plugins[0].description);
+  testing.expectEqual(navigator.plugins[0], navigator.plugins[0]);
+  testing.expectEqual(navigator.plugins[1], navigator.plugins.namedItem('Chrome PDF Viewer'));
+  testing.expectEqual(navigator.plugins[4], navigator.plugins['WebKit built-in PDF']);
+  testing.expectEqual(true, navigator.plugins[0] instanceof Plugin);
+  testing.expectEqual(2, navigator.plugins[0].length);
+  testing.expectEqual('application/pdf', navigator.plugins[0][0].type);
+  testing.expectEqual('0,1,2,3,4', Object.keys(navigator.plugins).join());
+  testing.expectEqual(5, [...navigator.plugins].length);
+
+  testing.expectEqual(2, navigator.mimeTypes.length);
+  testing.expectEqual(true, navigator.mimeTypes instanceof MimeTypeArray);
+  testing.expectEqual('application/pdf', navigator.mimeTypes[0].type);
+  testing.expectEqual('text/pdf', navigator.mimeTypes[1].type);
+  testing.expectEqual('pdf', navigator.mimeTypes[0].suffixes);
+  testing.expectEqual(navigator.plugins[0], navigator.mimeTypes['application/pdf'].enabledPlugin);
+  testing.expectEqual(true, navigator.mimeTypes[0] instanceof MimeType);
+  testing.expectEqual(true, navigator.pdfViewerEnabled);
+</script>
+
+<script id=stealth_hardware>
+  testing.expectEqual(true, [4, 8, 12, 16].includes(navigator.hardwareConcurrency));
+  testing.expectEqual(true, [4, 8].includes(navigator.deviceMemory));
+</script>
+
+<script id=stealth_window_geometry>
+  // A headful window: the toolbar makes it taller than its viewport, and the
+  // screen holds it.
+  testing.expectEqual(innerWidth, outerWidth);
+  testing.expectEqual(true, outerHeight > innerHeight);
+  testing.expectEqual(true, screen.width >= outerWidth);
+  testing.expectEqual(true, screen.availHeight >= outerHeight);
+  testing.expectEqual(true, screen.height > screen.availHeight);
+  testing.expectEqual(true, matchMedia('(device-width: ' + screen.width + 'px)').matches);
+  testing.expectEqual(true, matchMedia('(device-height: ' + screen.height + 'px)').matches);
+</script>
+

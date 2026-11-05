@@ -595,6 +595,8 @@ test "tests:beforeAll" {
     });
 
     test_app = try App.init(test_allocator, &test_config);
+    // Tests expect the deterministic profile, not this run's random one.
+    @import("browser/Fingerprint.zig").reset();
     errdefer test_app.deinit();
 
     try test_browser.init(test_app, .{});

@@ -1496,9 +1496,9 @@ test "server: buildJSONVersionResponse" {
     try testing.expect(std.mem.find(u8, res, "Connection: Close") == null);
 
     // Verify all required JSON fields are present in the body
-    try testing.expect(std.mem.find(u8, res, "\"Browser\": \"Lightpanda/") != null);
+    try testing.expect(std.mem.find(u8, res, "\"Browser\": \"Chrome/") != null);
     try testing.expect(std.mem.find(u8, res, "\"Protocol-Version\": \"1.3\"") != null);
-    try testing.expect(std.mem.find(u8, res, "\"User-Agent\": \"Lightpanda/") != null);
+    try testing.expect(std.mem.find(u8, res, "\"User-Agent\": \"Mozilla/5.0 (") != null);
     try testing.expect(std.mem.find(u8, res, "\"Lightpanda-Version\": \"" ++ lp.build_config.version ++ "\"") != null);
     try testing.expect(std.mem.find(u8, res, "\"webSocketDebuggerUrl\": \"ws://127.0.0.1:9222/\"") != null);
 
@@ -3140,7 +3140,7 @@ test "server: get /json/version" {
 
         const res1 = try c.httpRequest("GET /json/version HTTP/1.1\r\n\r\n");
         try testing.expect(std.mem.startsWith(u8, res1, "HTTP/1.1 200 OK\r\n"));
-        try testing.expect(std.mem.find(u8, res1, "\"Browser\": \"Lightpanda/") != null);
+        try testing.expect(std.mem.find(u8, res1, "\"Browser\": \"Chrome/") != null);
         try testing.expect(std.mem.find(u8, res1, "\"Protocol-Version\": \"1.3\"") != null);
         const ws_url = try testing.arena_allocator.print("\"webSocketDebuggerUrl\": \"ws://127.0.0.1:{d}/\"", .{testing.test_cdp_port});
         try testing.expect(std.mem.find(u8, res1, ws_url) != null);
@@ -3153,7 +3153,7 @@ test "server: get /json/version" {
 
         const res1 = try c.httpRequest("GET /json/version HTTP/1.1\r\n\r\n");
         try testing.expect(std.mem.startsWith(u8, res1, "HTTP/1.1 200 OK\r\n"));
-        try testing.expect(std.mem.find(u8, res1, "\"Browser\": \"Lightpanda/") != null);
+        try testing.expect(std.mem.find(u8, res1, "\"Browser\": \"Chrome/") != null);
     }
 }
 

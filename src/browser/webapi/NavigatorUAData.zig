@@ -77,8 +77,9 @@ fn getHighEntropyValues(_: *const NavigatorUAData, hints: []const []const u8, ex
         .architecture = uaArchitecture(),
         .bitness = uaBitness(),
         .model = "",
-        .platformVersion = "",
-        .uaFullVersion = if (full_versions.len > 0) full_versions[0].version else "1.0.0.0",
+        .platformVersion = uaPlatformVersion(stealth),
+        // Not the first brand's: Chrome's list may start with the GREASE one.
+        .uaFullVersion = if (stealth) Config.HttpHeaders.Chrome.full_version else if (full_versions.len > 0) full_versions[0].version else "1.0.0.0",
         .fullVersionList = full_versions,
         .wow64 = false,
         .formFactor = [_][]const u8{"Desktop"},
@@ -121,6 +122,19 @@ fn uaPlatform(stealth: bool) []const u8 {
         .linux => "Linux",
         .freebsd => "FreeBSD",
         else => "Unknown",
+    };
+}
+
+// A typical current OS release (Chrome reports "" only where it can't tell):
+// Windows 11 reports 13.0.0 or later, macOS its own version, Linux the kernel.
+fn uaPlatformVersion(stealth: bool) []const u8 {
+    if (!stealth) {
+        return "";
+    }
+    return switch (builtin.target.os.tag) {
+        .macos => "15.5.0",
+        .windows => "19.0.0",
+        else => "6.8.0",
     };
 }
 

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<script src="../testing.js"></script>
+
+<script id=chrome_object>
+  testing.expectEqual('object', typeof window.chrome);
+  testing.expectEqual(window.chrome, window.chrome);
+  testing.expectEqual('[object Object]', Object.prototype.toString.call(chrome));
+  testing.expectEqual('function', typeof chrome.loadTimes);
+  testing.expectEqual('function', typeof chrome.csi);
+  testing.expectEqual(undefined, chrome.runtime);
+  // Not an interface: no global constructor.
+  testing.expectEqual(undefined, window.Chrome);
+</script>
+
+<script id=chrome_loadTimes>
+  const lt = chrome.loadTimes();
+  testing.expectEqual('number', typeof lt.requestTime);
+  testing.expectEqual(true, lt.requestTime > 1e9);
+  testing.expectEqual(true, lt.finishLoadTime >= lt.startLoadTime);
+  testing.expectEqual('h2', lt.npnNegotiatedProtocol);
+
+  const c = chrome.csi();
+  testing.expectEqual('number', typeof c.startE);
+  testing.expectEqual('number', typeof c.pageT);
+</script>
+
+<script id=chrome_app>
+  testing.expectEqual(chrome.app, chrome.app);
+  testing.expectEqual(false, chrome.app.isInstalled);
+  testing.expectEqual(false, chrome.app.getIsInstalled());
+  testing.expectEqual(null, chrome.app.getDetails());
+  testing.expectEqual('cannot_run', chrome.app.runningState());
+  testing.expectEqual('not_installed', chrome.app.InstallState.NOT_INSTALLED);
+  testing.expectEqual('running', chrome.app.RunningState.RUNNING);
+</script>
+
+<script id=chrome_keys>
+  // Chrome's own property order on a regular page.
+  testing.expectEqual('loadTimes,csi,app', Object.keys(chrome).join());
+</script>

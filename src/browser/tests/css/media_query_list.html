@@ -57,18 +57,19 @@
 
 <script id=matchMedia_device_width_height>
 {
-  // The deprecated device-* features resolve against the same 1920×1080
-  // viewport as window.screen.width / .height.
+  // The deprecated device-* features resolve against window.screen (2560×1440
+  // in tests for the 1920×1080 viewport), not the viewport.
   testing.expectEqual(true,  window.matchMedia('(min-device-width: 1px)').matches);
-  testing.expectEqual(true,  window.matchMedia('(min-device-width: 1920px)').matches);
-  testing.expectEqual(false, window.matchMedia('(min-device-width: 1921px)').matches);
-  testing.expectEqual(true,  window.matchMedia('(max-device-width: 1920px)').matches);
-  testing.expectEqual(false, window.matchMedia('(max-device-width: 1919px)').matches);
-  testing.expectEqual(true,  window.matchMedia('(device-width: 1920px)').matches);
+  testing.expectEqual(true,  window.matchMedia('(min-device-width: 2560px)').matches);
+  testing.expectEqual(false, window.matchMedia('(min-device-width: 2561px)').matches);
+  testing.expectEqual(true,  window.matchMedia('(max-device-width: 2560px)').matches);
+  testing.expectEqual(false, window.matchMedia('(max-device-width: 2559px)').matches);
+  testing.expectEqual(true,  window.matchMedia('(device-width: 2560px)').matches);
+  testing.expectEqual(false, window.matchMedia('(device-width: 1920px)').matches);
 
-  testing.expectEqual(true,  window.matchMedia('(min-device-height: 1080px)').matches);
-  testing.expectEqual(false, window.matchMedia('(min-device-height: 1081px)').matches);
-  testing.expectEqual(true,  window.matchMedia('(device-height: 1080px)').matches);
+  testing.expectEqual(true,  window.matchMedia('(min-device-height: 1440px)').matches);
+  testing.expectEqual(false, window.matchMedia('(min-device-height: 1441px)').matches);
+  testing.expectEqual(true,  window.matchMedia('(device-height: 1440px)').matches);
 
   // .media round-trips the query as written.
   const mql = window.matchMedia('(min-device-width: 1px)');

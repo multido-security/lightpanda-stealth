@@ -939,6 +939,9 @@ pub fn navigate(self: *Frame, request_url: [:0]const u8, opts: NavigateOpts) !vo
         // Ours until submit; clean up if header setup fails.
         errdefer transfer.deinit();
         try transfer.setHeader("Accept", lp.Config.HttpHeaders.navigation_accept, .{});
+        // What Chrome adds to every navigation.
+        try transfer.setHeader("Upgrade-Insecure-Requests", "1", .{});
+        try transfer.setHeader("Priority", "u=0, i", .{});
         if (opts.header) |hdr| {
             // Arrives pre-joined ("Name: Value"), e.g. from the CLI.
             if (HttpClient.Header.parse(hdr)) |parsed| {

@@ -256,6 +256,7 @@ const ImageLoad = struct {
         const current = self.generation == img._generation;
         if (current) {
             img._complete = true;
+            img._broken = kind == .@"error";
             if (kind == .load) {
                 if (self.dimensions) |dimensions| {
                     img._natural_width = dimensions.width;

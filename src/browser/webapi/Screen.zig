@@ -48,13 +48,15 @@ fn getOrientation(self: *Screen, frame: *Frame) !*Orientation {
 }
 
 pub fn getWidth(_: *const Screen, frame: *Frame) u32 {
-    const viewport = frame.page.getViewport();
-    return viewport.screen_width orelse viewport.width;
+    return frame.page.getViewport().screen().width;
 }
 
 pub fn getHeight(_: *const Screen, frame: *Frame) u32 {
-    const viewport = frame.page.getViewport();
-    return viewport.screen_height orelse viewport.height;
+    return frame.page.getViewport().screen().height;
+}
+
+fn getAvailHeight(_: *const Screen, frame: *Frame) u32 {
+    return frame.page.getViewport().availHeight();
 }
 
 pub const JsApi = struct {
@@ -68,7 +70,7 @@ pub const JsApi = struct {
     pub const width = bridge.accessor(Screen.getWidth, null, .{});
     pub const height = bridge.accessor(Screen.getHeight, null, .{});
     pub const availWidth = bridge.accessor(Screen.getWidth, null, .{});
-    pub const availHeight = bridge.property(1040, .{ .template = false });
+    pub const availHeight = bridge.accessor(Screen.getAvailHeight, null, .{});
     pub const colorDepth = bridge.property(24, .{ .template = false });
     pub const pixelDepth = bridge.property(24, .{ .template = false });
     pub const orientation = bridge.accessor(Screen.getOrientation, null, .{});
@@ -113,9 +115,8 @@ pub const Orientation = struct {
         if (viewport.orientation) |orientation| {
             return @tagName(orientation.type);
         }
-        const width = viewport.screen_width orelse viewport.width;
-        const height = viewport.screen_height orelse viewport.height;
-        return if (height > width) "portrait-primary" else "landscape-primary";
+        const screen = viewport.screen();
+        return if (screen.height > screen.width) "portrait-primary" else "landscape-primary";
     }
 
     fn lock(_: *Orientation, _: LockType) !js.Promise {

@@ -28,7 +28,9 @@
     testing.expectEqual("load", evt);
     testing.expectEqual(1000, img.naturalWidth);
     testing.expectEqual(750, img.naturalHeight);
-    testing.expectEqual(0, img.width); // Natural size does not set HTML attributes.
+    // Without a width attribute, Chrome reports the natural size.
+    testing.expectEqual(1000, img.width);
+    testing.expectEqual(null, img.getAttribute('width'));
   });
 </script>
 
@@ -48,6 +50,38 @@
   await state.done(() => {
     testing.expectEqual("error", evt);
     testing.expectEqual(0, img.naturalWidth);
+  });
+</script>
+
+<script id="img-broken-dimensions" type=module>
+  // Chrome draws a 16x16 broken-image icon, so a failed image in the document
+  // measures 16x16 (headless browsers report 0x0, a known check).
+  const state = await testing.async();
+  const img = document.createElement("img");
+  document.body.appendChild(img);
+  const detached = document.createElement("img");
+
+  await new Promise(resolve => {
+    img.addEventListener("error", resolve);
+    img.src = "/images/404.png";
+  });
+  await new Promise(resolve => {
+    detached.addEventListener("error", resolve);
+    detached.src = "/images/404.png";
+  });
+
+  state.resolve();
+  await state.done(() => {
+    testing.expectEqual(16, img.width);
+    testing.expectEqual(16, img.height);
+    testing.expectEqual(0, img.naturalWidth);
+    // Not rendered, so no icon.
+    testing.expectEqual(0, detached.width);
+    // An explicit size still wins.
+    img.width = 40;
+    testing.expectEqual(40, img.width);
+    testing.expectEqual('40', img.getAttribute('width'));
+    img.remove();
   });
 </script>
 

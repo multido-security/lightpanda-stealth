@@ -337,7 +337,8 @@ test "cdp.Emulation: setDeviceMetricsOverride screenWidth/screenHeight reach win
     try testing.expect(v.toBool());
 
     try ctx.processMessage(.{ .id = 3, .method = "Emulation.clearDeviceMetricsOverride" });
-    v = try ls.local.exec("screen.width === innerWidth && screen.height === innerHeight && devicePixelRatio === 1", null);
+    // Back to a desktop screen that holds the window.
+    v = try ls.local.exec("screen.width >= innerWidth && screen.availHeight >= outerHeight && outerHeight > innerHeight && devicePixelRatio === 1", null);
     try testing.expect(v.toBool());
 }
 
@@ -355,7 +356,7 @@ test "cdp.Emulation: setUserAgentOverride with valid user agent" {
     try ctx.expectSentResult(null, .{ .id = 1 });
 }
 
-test "cdp.Emulation: setUserAgentOverride ignores mozilla" {
+test "cdp.Emulation: setUserAgentOverride accepts mozilla" {
     testing.silenceLog(&.{.not_implemented});
 
     var ctx = try testing.context();
@@ -368,11 +369,12 @@ test "cdp.Emulation: setUserAgentOverride ignores mozilla" {
         .params = .{ .userAgent = "Mozilla/5.0 (Windows NT 10.0)" },
     });
 
-    try ctx.expectSentResult(null, .{});
-    try testing.expectEqual(false, ctx.cdp().browser_context.?.user_agent_changed);
+    try ctx.expectSentResult(null, .{ .id = 2 });
+    try testing.expectEqual(true, ctx.cdp().browser_context.?.user_agent_changed);
+    try std.testing.expectEqualStrings("Mozilla/5.0 (Windows NT 10.0)", ctx.cdp().browser.http_client.getUserAgent());
 }
 
-test "cdp.Emulation: setUserAgentOverride ignores mozilla case insensitive" {
+test "cdp.Emulation: setUserAgentOverride accepts mozilla case insensitive" {
     testing.silenceLog(&.{.not_implemented});
 
     var ctx = try testing.context();
@@ -385,8 +387,9 @@ test "cdp.Emulation: setUserAgentOverride ignores mozilla case insensitive" {
         .params = .{ .userAgent = "MOZILLA/5.0 test" },
     });
 
-    try ctx.expectSentResult(null, .{});
-    try testing.expectEqual(false, ctx.cdp().browser_context.?.user_agent_changed);
+    try ctx.expectSentResult(null, .{ .id = 3 });
+    try testing.expectEqual(true, ctx.cdp().browser_context.?.user_agent_changed);
+    try std.testing.expectEqualStrings("MOZILLA/5.0 test", ctx.cdp().browser.http_client.getUserAgent());
 }
 
 test "cdp.Emulation: setUserAgentOverride rejects non-printable characters" {
@@ -446,7 +449,7 @@ test "cdp.Emulation: setUserAgentOverride acceptLanguage drives navigator.langua
     try expectJs(frame, "navigator.language === 'de-DE' && navigator.languages.join() === 'de-DE,de,en'");
     try std.testing.expectEqualStrings("de-DE,de;q=0.9, en;q=0.8", ctx.cdp().browser.http_client.getAcceptLanguage());
 
-    // A Mozilla user agent is refused, the language still applies.
+    // A browser user agent applies along with the language.
     try ctx.processMessage(.{
         .id = 2,
         .method = "Emulation.setUserAgentOverride",
@@ -454,7 +457,7 @@ test "cdp.Emulation: setUserAgentOverride acceptLanguage drives navigator.langua
     });
     try ctx.expectSentResult(null, .{ .id = 2 });
     try expectJs(frame, "navigator.language === 'fr-FR' && navigator.languages.length === 1");
-    try std.testing.expectEqualStrings("CustomBot/2.0", ctx.cdp().browser.http_client.getUserAgent());
+    try std.testing.expectEqualStrings("Mozilla/5.0", ctx.cdp().browser.http_client.getUserAgent());
 
     try ctx.processMessage(.{
         .id = 3,

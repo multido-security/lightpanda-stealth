@@ -11,9 +11,11 @@
   <img src="/src/browser/tests/cdp/page_status.png">
   <canvas id="c" width="10" height="10"></canvas>
   <script>
+    // WebGL on its own canvas: a context locks the canvas to its kind.
+    const gl = document.createElement('canvas');
+    gl.getContext('webgl');
+    gl.getContext('experimental-webgl');
     const c = document.getElementById('c');
-    c.getContext('webgl');
-    c.getContext('experimental-webgl');
     const ctx = c.getContext('2d');
     ctx.beginPath();
     ctx.rect(0, 0, 5, 5);
