@@ -1021,6 +1021,10 @@ pub fn scheduleNavigation(self: *Frame, request_url: []const u8, opts: NavigateO
 // frame that it's acting on.
 fn scheduleNavigationWithArena(originator: *Frame, arena: *lp.Arena, request_url: []const u8, opts: NavigateOpts, nt: Navigation) !void {
     const resolved_url, const is_about_something = blk: {
+        if (URL.javascriptUrlSource(request_url) != null) {
+            // Not a location: kept as is (see the javascript: case below).
+            break :blk .{ try arena.dupeSentinel(u8, request_url, 0), false };
+        }
         if (URL.isCompleteHTTPUrl(request_url)) {
             break :blk .{ try arena.dupeSentinel(u8, request_url, 0), false };
         }
@@ -1063,9 +1067,9 @@ fn scheduleNavigationWithArena(originator: *Frame, arena: *lp.Arena, request_url
     // A javascript: URL is not fetched: its script runs in the target's
     // document, and only for an initiator of the same origin.
     // https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
-    if (std.mem.startsWith(u8, resolved_url, "javascript:")) {
+    if (URL.javascriptUrlSource(resolved_url)) |source| {
         if (target == originator or sameOrigin(originator, target)) {
-            try user_input.runJavascriptUrl(target, resolved_url["javascript:".len..]);
+            try user_input.runJavascriptUrl(target, source);
         }
         // don't defer this, the caller is responsible for freeing it on error
         arena.release();
@@ -2042,12 +2046,18 @@ fn frameDoneCallback(ctx: *anyopaque) !void {
             self.documentIsComplete();
         },
         .err => |err| {
-            // Generate a pseudo HTML page indicating the failure.
-            const html = try std.mem.concat(parse_arena.allocator(), u8, &.{
-                "<html><head><meta charset=\"utf-8\"></head><body><h1>Navigation failed</h1><p>Reason: ",
-                @errorName(err),
-                "</p></body></html>",
-            });
+            // A pseudo HTML page indicating the failure, for the top-level
+            // frame (what dumps and agents read). A sub-frame's is empty:
+            // its parent's scripts can read it, and Chrome's never says
+            // anything like this.
+            const html = if (self.parent != null)
+                "<html><head><meta charset=\"utf-8\"></head><body></body></html>"
+            else
+                try std.mem.concat(parse_arena.allocator(), u8, &.{
+                    "<html><head><meta charset=\"utf-8\"></head><body><h1>Navigation failed</h1><p>Reason: ",
+                    @errorName(err),
+                    "</p></body></html>",
+                });
 
             parser.parse(html);
             self._parse_state = .complete;
@@ -2266,8 +2276,12 @@ pub fn iframeAddedCallback(self: *Frame, iframe: *IFrame) !void {
         .timestamp = lp.datetime.timestamp(.boot),
     });
 
+    // A javascript: src isn't fetched: the frame gets its initial
+    // about:blank document, then the script runs in it (below).
+    const javascript_source = URL.javascriptUrlSource(src);
+
     const url = blk: {
-        if (URL.isAboutBlank(src)) {
+        if (URL.isAboutBlank(src) or javascript_source != null) {
             break :blk "about:blank"; // navigate will handle this special case
         }
         if (std.mem.eql(u8, src, "about:srcdoc")) {
@@ -2322,6 +2336,12 @@ pub fn iframeAddedCallback(self: *Frame, iframe: *IFrame) !void {
     if (new_frame.window._closed) {
         // discarded while navigating, it's no longer in child_frames
         return;
+    }
+
+    if (javascript_source) |source| {
+        // The parent initiated it and the frame inherited its origin, so the
+        // same-origin check scheduleNavigation does always passes here.
+        try user_input.runJavascriptUrl(new_frame, source);
     }
 
     // window[N] is based on document order. We appended above and rely on

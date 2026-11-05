@@ -1564,9 +1564,19 @@ const JavascriptUrlTask = struct {
             log.debug(.browser, "javascript-url compile", .{ .err = err, .type = frame._type, .url = frame.url });
             return null;
         };
-        _ = script.run() catch |err| {
+        const result = script.run() catch |err| {
             log.debug(.browser, "javascript-url run", .{ .err = err, .type = frame._type, .url = frame.url });
+            return null;
         };
+        // A string result becomes the frame's document
+        // (https://html.spec.whatwg.org/#evaluate-a-javascript:-url).
+        if (result.isString() != null) {
+            const html = try result.toStringSliceWithAlloc(self.arena.allocator());
+            const document = frame.document;
+            _ = try document.open(frame);
+            try document.write(.init(&.{html}), frame);
+            try document.close(frame);
+        }
         return null;
     }
 

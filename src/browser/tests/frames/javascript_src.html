@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<script src="../testing.js"></script>
+<body>
+<!-- Kasada's challenge page inserts exactly this. -->
+<iframe id=parsed src="javascript:;" style="display: none;"></iframe>
+<iframe id=html src="javascript:'<p id=x>hi</p>'"></iframe>
+</body>
+
+<script id=javascript_src_initial>
+  // A javascript: src is never fetched (nor resolved as a relative URL): the
+  // frame has its initial about:blank document, complete and empty, from
+  // the moment it's inserted.
+  {
+    const parsed = document.getElementById('parsed');
+    testing.expectEqual('about:blank', parsed.contentWindow.location.href);
+    testing.expectEqual('complete', parsed.contentDocument.readyState);
+    testing.expectEqual('', parsed.contentDocument.body.innerHTML);
+
+    for (const src of ['javascript:void(0)', ' JavaScript:;', 'javascript:1+1']) {
+      const f = document.createElement('iframe');
+      f.src = src;
+      document.body.appendChild(f);
+      testing.expectEqual('about:blank', f.contentWindow.location.href);
+      testing.expectEqual('complete', f.contentDocument.readyState);
+      testing.expectEqual('', f.contentDocument.body.innerHTML);
+    }
+  }
+</script>
+
+<script id=javascript_src_runs type=module>
+  // The script runs in the frame, after insertion; a string result becomes
+  // the frame's document.
+  {
+    const state = await testing.async();
+    const f = document.createElement('iframe');
+    f.src = 'javascript:window.ran = (window.parent !== window); void 0';
+    document.body.appendChild(f);
+    testing.expectEqual(undefined, f.contentWindow.ran);
+    await new Promise((r) => setTimeout(r, 20));
+    state.resolve();
+    await state.done(() => {
+      testing.expectEqual(true, f.contentWindow.ran);
+      testing.expectEqual('', f.contentDocument.body.innerHTML);
+      const html = document.getElementById('html');
+      testing.expectEqual('hi', html.contentDocument.getElementById('x').textContent);
+      testing.expectEqual('complete', html.contentDocument.readyState);
+    });
+  }
+</script>
+
+<script id=javascript_src_renavigate type=module>
+  // Changing an existing frame's src to javascript: runs it there too.
+  {
+    const state = await testing.async();
+    const f = document.createElement('iframe');
+    document.body.appendChild(f);
+    f.src = 'javascript:"<b>again</b>"';
+    await new Promise((r) => setTimeout(r, 20));
+    state.resolve();
+    await state.done(() => {
+      testing.expectEqual('<b>again</b>', f.contentDocument.body.innerHTML);
+    });
+  }
+</script>
+
+<script id=failed_subframe_is_blank type=module>
+  // A sub-frame whose load fails is empty: no readable error text.
+  {
+    const state = await testing.async();
+    const f = document.createElement('iframe');
+    f.onload = () => state.resolve();
+    f.src = 'http://127.0.0.1:1/unreachable';
+    document.body.appendChild(f);
+    await state.done(() => {
+      testing.expectEqual('', f.contentDocument.body.innerHTML);
+      testing.expectEqual(false, f.contentDocument.documentElement.textContent.includes('Navigation failed'));
+    });
+  }
+</script>

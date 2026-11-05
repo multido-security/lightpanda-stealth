@@ -96,6 +96,16 @@ pub fn isJavascriptUrl(url: []const u8) bool {
     return std.ascii.startsWithIgnoreCase(url[i..], "javascript:");
 }
 
+/// A javascript: URL's script: what follows the scheme, once leading C0
+/// controls and spaces are stripped. Null for any other URL. Never resolve a
+/// javascript: URL against a base: it's not a location.
+pub fn javascriptUrlSource(url: []const u8) ?[]const u8 {
+    var i: usize = 0;
+    while (i < url.len and url[i] <= ' ') : (i += 1) {}
+    if (!std.ascii.startsWithIgnoreCase(url[i..], "javascript:")) return null;
+    return url[i + "javascript:".len ..];
+}
+
 pub fn isFetchable(url: []const u8) bool {
     const protocol = getProtocol(url);
     inline for (.{ "about:", "blob:", "data:", "file:", "http:", "https:" }) |scheme| {
