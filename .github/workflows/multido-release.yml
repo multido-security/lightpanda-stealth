@@ -1,0 +1,84 @@
+# Multido release: Linux x86_64 + aarch64 binaries of this stealth fork, published
+# as GitHub Release assets (tag stealth-<12-char commit>) with sha256 files.
+# roger-ingest downloads a pinned release and verifies the checksum instead of
+# compiling (the aarch64 link needs more RAM than a private-repo runner has).
+# Same build steps as upstream's release.yml, without its S3 upload (upstream's
+# bucket; this fork has no credentials, which is why that workflow fails here).
+name: multido-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit to build (roger-ingest pins this; the release tag is stealth-<12-char sha>)"
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    if: github.repository == 'multido-security/lightpanda-stealth'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            cpu_flag: -Dcpu=x86_64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            cpu_flag: -Dcpu=generic
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      ARCH: ${{ matrix.arch }}
+      OS: linux
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Version and tag
+        id: ver
+        run: |
+          SHA=$(git rev-parse --short=12 HEAD)
+          BASE=$(sed -n 's/^ *\.version = "\(.*\)",/\1/p' build.zig.zon)
+          echo "version=${BASE}+stealth.${SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=stealth-${SHA}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/install
+        with:
+          os: ${{ env.OS }}
+          arch: ${{ env.ARCH }}
+
+      - name: v8 snapshot
+        run: zig build -Dprebuilt_v8_path=v8/libc_v8.a -Doptimize=fast snapshot_creator -- src/snapshot.bin
+
+      - name: zig build
+        run: zig build -Dsnapshot_path=../../snapshot.bin -Dprebuilt_v8_path=v8/libc_v8.a -Doptimize=fast -Dorderfile=orderfile/lightpanda.ld ${{ matrix.cpu_flag }} -Dversion="${{ steps.ver.outputs.version }}"
+
+      - name: Strip, smoke-test, checksum
+        run: |
+          BIN=lightpanda-${ARCH}-${OS}
+          mv zig-out/bin/lightpanda "$BIN"
+          objcopy --only-keep-debug --compress-debug-sections=zlib "$BIN" "$BIN.debug"
+          objcopy --strip-all --add-gnu-debuglink="$BIN.debug" "$BIN"
+          ./"$BIN" version
+          ./"$BIN" version | grep -q -- "+stealth." || { echo "::error::version stamp missing"; exit 1; }
+          sha256sum "$BIN" > "$BIN.sha256"
+          cat "$BIN.sha256"; ls -l "$BIN" "$BIN.debug"
+
+      - name: Publish release asset
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
+        with:
+          tag: ${{ steps.ver.outputs.tag }}
+          commit: ${{ steps.ver.outputs.commit }}
+          name: Lightpanda stealth ${{ steps.ver.outputs.tag }}
+          body: "Linux builds of ${{ steps.ver.outputs.version }} for roger-ingest. Verify with the .sha256 files."
+          allowUpdates: true
+          makeLatest: false
+          artifacts: lightpanda-${{ env.ARCH }}-${{ env.OS }},lightpanda-${{ env.ARCH }}-${{ env.OS }}.sha256,lightpanda-${{ env.ARCH }}-${{ env.OS }}.debug
