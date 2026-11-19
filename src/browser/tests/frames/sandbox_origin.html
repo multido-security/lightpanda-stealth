@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<script src="../testing.js"></script>
+
+<script id=sandbox_srcdoc_opaque_origin type=module>
+  // Google Translate's element.js builds exactly this frame and throws
+  // "sandboxing error" unless self.origin is "null".
+  {
+    const state = await testing.async();
+    const listener = (e) => {
+      if (e.data && e.data.test === 'opaque') {
+        window.removeEventListener('message', listener);
+        state.resolve(e.data);
+      }
+    };
+    window.addEventListener('message', listener);
+
+    const f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.srcdoc = `<script>
+      let parentReadable;
+      try { window.parent.escape(''); parentReadable = true; } catch (e) { parentReadable = false; }
+      parent.postMessage({test: 'opaque', origin: self.origin, parentReadable}, '*');
+    <\/script>`;
+    f.onload = () => {
+      testing.expectEqual(null, f.contentDocument);
+    };
+    document.body.appendChild(f);
+
+    await state.done((data) => {
+      testing.expectEqual('null', data.origin);
+      testing.expectEqual(false, data.parentReadable);
+    });
+  }
+</script>
+
+<script id=sandbox_message_origin type=module>
+  {
+    const state = await testing.async();
+    const listener = (e) => {
+      if (e.data === 'from_sandbox') {
+        window.removeEventListener('message', listener);
+        state.resolve(e.origin);
+      }
+    };
+    window.addEventListener('message', listener);
+
+    const f = document.createElement('iframe');
+    f.sandbox = 'allow-scripts';
+    f.srcdoc = `<script>parent.postMessage('from_sandbox', '*')<\/script>`;
+    document.body.appendChild(f);
+
+    await state.done((origin) => {
+      testing.expectEqual('null', origin);
+    });
+  }
+</script>
+
+<script id=sandbox_allow_same_origin type=module>
+  {
+    const state = await testing.async();
+
+    const f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts ALLOW-SAME-ORIGIN');
+    f.srcdoc = '<p>same</p>';
+    f.onload = () => state.resolve(f);
+    document.body.appendChild(f);
+
+    await state.done((f) => {
+      testing.expectEqual('same', f.contentDocument.querySelector('p').textContent);
+      testing.expectEqual(self.origin, f.contentWindow.origin);
+    });
+  }
+</script>
+
+<script id=sandbox_nested_inherits type=module>
+  {
+    const state = await testing.async();
+    const listener = (e) => {
+      if (e.data && e.data.test === 'nested') {
+        window.removeEventListener('message', listener);
+        state.resolve(e.data);
+      }
+    };
+    window.addEventListener('message', listener);
+
+    // the inner frame asks for nothing, but its parent is sandboxed
+    const inner = `<script>top.postMessage({test: 'nested', origin: self.origin}, '*')<\/script>`;
+    const f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.srcdoc = `<iframe srcdoc="${inner.replace(/"/g, '&quot;')}"></iframe>`;
+    document.body.appendChild(f);
+
+    await state.done((data) => {
+      testing.expectEqual('null', data.origin);
+    });
+  }
+</script>
+
+<script id=no_sandbox_inherits_parent type=module>
+  {
+    const state = await testing.async();
+
+    const f = document.createElement('iframe');
+    f.srcdoc = '<p>x</p>';
+    f.onload = () => state.resolve(f);
+    document.body.appendChild(f);
+
+    await state.done((f) => {
+      testing.expectEqual(self.origin, f.contentWindow.origin);
+    });
+  }
+</script>

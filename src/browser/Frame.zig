@@ -252,6 +252,11 @@ _requested_url: [:0]const u8 = "about:blank",
 
 origin: ?[]const u8 = null,
 
+// The frame's iframe had a `sandbox` attribute without allow-same-origin when
+// this navigation started (or an ancestor was sandboxed that way): its
+// document gets an opaque origin whatever its URL.
+_sandboxed_origin: bool = false,
+
 // The base url specifies the base URL used to resolve the relative urls.
 // It is set by a <base> tag.
 // If null, inherited_base_url is used, then url.
@@ -703,9 +708,31 @@ pub fn isSecureContext(self: *const Frame) bool {
     return true;
 }
 
+// Whether the document this frame is about to load gets an opaque origin
+// because of <iframe sandbox>: the attribute is present without the
+// allow-same-origin token, or the parent frame is itself sandboxed that way
+// (sandboxing is inherited by nested browsing contexts).
+fn computeSandboxedOrigin(self: *const Frame) bool {
+    if (self.parent) |parent| {
+        if (parent._sandboxed_origin) return true;
+    }
+    const iframe = self.iframe orelse return false;
+    const value = iframe.asElement().getAttributeSafe(comptime .wrap("sandbox")) orelse return false;
+    var it = std.mem.tokenizeAny(u8, value, " \t\n\r\x0C");
+    while (it.next()) |token| {
+        if (std.ascii.eqlIgnoreCase(token, "allow-same-origin")) return false;
+    }
+    return true;
+}
+
 fn isPotentiallyTrustworthy(self: *const Frame) bool {
     if (self.origin) |origin| {
         return URL.isPotentiallyTrustworthy(origin);
+    }
+    // A sandboxed document's origin is opaque, but it's still a secure context
+    // when its URL is trustworthy (the about:/file: cases fall through below).
+    if (self._sandboxed_origin and URL.isPotentiallyTrustworthy(self.url)) {
+        return true;
     }
     // No origin: either an opaque one (data:, which is never trustworthy), a
     // file: document, or an about:blank/srcdoc with nothing to inherit from.
@@ -740,6 +767,10 @@ pub fn navigate(self: *Frame, request_url: [:0]const u8, opts: NavigateOpts) !vo
     }
 
     const http_client = &session.browser.http_client;
+
+    // The sandbox flags are snapshotted when the navigation starts: changing
+    // the attribute later only affects the next navigation.
+    self._sandboxed_origin = self.computeSandboxedOrigin();
 
     // Handle synthetic navigations: about:blank, about:srcdoc and blob: URLs
     const is_about_blank = URL.isAboutBlank(request_url);
@@ -790,6 +821,9 @@ pub fn navigate(self: *Frame, request_url: [:0]const u8, opts: NavigateOpts) !vo
                 self.referrer_policy = opener._frame.referrer_policy;
             }
         } else {
+            self.origin = null;
+        }
+        if (self._sandboxed_origin) {
             self.origin = null;
         }
         try self.js.setOrigin(self.origin);
@@ -1743,6 +1777,9 @@ fn frameHeaderDoneCallback(transfer: *HttpClient.Transfer) !HttpClient.Transfer.
         self.origin = null;
         try self.js.setOrigin(null);
         return error.XFrameOptionsDenied;
+    }
+    if (self._sandboxed_origin) {
+        self.origin = null;
     }
     try self.js.setOrigin(self.origin);
 
