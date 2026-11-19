@@ -96,6 +96,56 @@
   }
 </script>
 
+<script id=sandbox_src_url type=module>
+  // a script-created frame, sandbox set before src and before insertion
+  {
+    const state = await testing.async();
+    const listener = (e) => {
+      if (e.data && e.data.test === 'sandbox_probe') {
+        window.removeEventListener('message', listener);
+        state.resolve({data: e.data, origin: e.origin});
+      }
+    };
+    window.addEventListener('message', listener);
+
+    const f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.src = 'support/sandbox_probe.html';
+    document.body.appendChild(f);
+
+    await state.done(({data, origin}) => {
+      testing.expectEqual('null', origin);
+      testing.expectEqual('null', data.origin);
+      testing.expectEqual('SecurityError/true', data.read);
+      testing.expectEqual('SecurityError/true', data.write);
+      testing.expectEqual('ok', data.then);
+      testing.expectEqual('ok', data.allowed);
+    });
+  }
+</script>
+
+<script id=srcdoc_message_origin_is_parent type=module>
+  // an unsandboxed srcdoc shares its parent's origin, and so does e.origin
+  {
+    const state = await testing.async();
+    const listener = (e) => {
+      if (e.data === 'from_plain_srcdoc') {
+        window.removeEventListener('message', listener);
+        state.resolve(e.origin);
+      }
+    };
+    window.addEventListener('message', listener);
+
+    const f = document.createElement('iframe');
+    f.srcdoc = `<script>parent.postMessage('from_plain_srcdoc', '*')<\/script>`;
+    document.body.appendChild(f);
+
+    await state.done((origin) => {
+      testing.expectEqual(self.origin, origin);
+    });
+  }
+</script>
+
 <script id=no_sandbox_inherits_parent type=module>
   {
     const state = await testing.async();

@@ -696,7 +696,7 @@ pub fn stop(self: *Window) void {
 }
 
 // postMessage(message, targetOrigin, transfer) or postMessage(message, options).
-pub fn postMessage(self: *Window, message: js.Value, target_origin_or_options: ?js.Value, transfer: ?js.Value, frame: *Frame) !void {
+pub fn postMessage(self: *Window, message: js.Value, target_origin_or_options: ?js.Value, transfer: ?js.Value, _: *Frame) !void {
     // For now, we ignore targetOrigin checking and just dispatch the message
     // In a full implementation, we would validate the origin
     var transfer_arg = transfer;
@@ -719,8 +719,10 @@ pub fn postMessage(self: *Window, message: js.Value, target_origin_or_options: ?
     const cloned = try MessagePort.cloneMessage(message, ports, &target_frame.js.execution);
     errdefer cloned.release();
 
-    // Origin should be the source window's origin (where the message came from)
-    const origin = try source_window._location.getOrigin(&frame.js.execution);
+    // The source window's origin, not its URL's: a sandboxed document's
+    // origin is opaque ("null") whatever its URL, and an about:blank
+    // document's is its creator's.
+    const origin = source_window._frame.origin orelse "null";
     const callback = try arena.create(PostMessageCallback);
     callback.* = .{
         .arena = arena,
@@ -1285,11 +1287,39 @@ const CrossOriginWindow = struct {
     }
 
     pub fn getTop(self: *CrossOriginWindow, frame: *Frame) Access {
-        return self.window.getParent(frame);
+        return self.window.getTop(frame);
     }
 
     fn getParent(self: *CrossOriginWindow, frame: *Frame) Access {
         return self.window.getParent(frame);
+    }
+
+    // Every property outside the cross-origin allowlist throws a SecurityError
+    // DOMException, as in Chrome ("Blocked a frame with origin ... from
+    // accessing a cross-origin frame"). Only reached when no real property
+    // matches (the interceptor is non-masking).
+    fn getNamed(self: *const CrossOriginWindow, name: []const u8) ![]const u8 {
+        if (self.isAllowedNamed(name)) return error.NotHandled;
+        return error.SecurityError;
+    }
+
+    fn setNamed(self: *const CrossOriginWindow, name: []const u8, _: js.Value) !void {
+        if (self.isAllowedNamed(name)) return error.NotHandled;
+        return error.SecurityError;
+    }
+
+    fn isAllowedNamed(self: *const CrossOriginWindow, name: []const u8) bool {
+        // CrossOriginPropertyFallback: "then" reads as undefined, so awaiting
+        // or resolving a promise with a cross-origin window doesn't throw.
+        if (std.mem.eql(u8, name, "then")) return true;
+        // Location isn't implemented cross-origin yet; keep reading it as
+        // undefined rather than throwing on a legitimate access.
+        if (std.mem.eql(u8, name, "location")) return true;
+        // A child browsing context's name is readable cross-origin.
+        for (self.window._frame.child_frames.items) |child| {
+            if (std.mem.eql(u8, child.window._name, name)) return true;
+        }
+        return false;
     }
 
     fn getFramesLength(self: *const CrossOriginWindow) u32 {
@@ -1340,6 +1370,7 @@ const CrossOriginWindow = struct {
         pub const opener = bridge.accessor(CrossOriginWindow.getOpener, null, .{});
         pub const closed = bridge.accessor(CrossOriginWindow.getClosed, null, .{});
         pub const length = bridge.accessor(CrossOriginWindow.getFramesLength, null, .{});
+        pub const @"[str]" = bridge.namedIndexed(CrossOriginWindow.getNamed, CrossOriginWindow.setNamed, null, null, null, .{});
     };
 };
 

@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <script>
+  // Like Chrome, reading a cross-origin window's document throws a SecurityError
+  let document_access;
+  try {
+    document_access = window.parent.document === undefined ? 'undefined' : 'readable';
+  } catch (e) {
+    document_access = e.name + '/' + (e instanceof DOMException);
+  }
   window.parent.postMessage({
     url: location.toString(),
-    document_is_undefined: window.parent.document === undefined,
+    document_access,
   }, '*')
 </script>

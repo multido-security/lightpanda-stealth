@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<script>
+  function probe(fn) {
+    try { fn(); return 'ok'; } catch (e) { return e.name + '/' + (e instanceof DOMException); }
+  }
+  parent.postMessage({
+    test: 'sandbox_probe',
+    origin: self.origin,
+    read: probe(() => parent.document),
+    write: probe(() => { parent.foo = 1; }),
+    then: probe(() => { if (parent.then !== undefined) throw new Error('then'); }),
+    allowed: probe(() => { parent.postMessage; parent.length; parent.parent; parent.top; parent.closed; }),
+  }, '*');
+</script>

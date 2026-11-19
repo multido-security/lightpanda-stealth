@@ -41,9 +41,9 @@
     testing.expectEqual(expected_urls.sort(), captures.map((c) => {return c.url}).sort());
     captures.forEach((c) => {
       if (c.url.includes(testing.BASE_URL)) {
-        testing.expectEqual(false, c.document_is_undefined);
+        testing.expectEqual('readable', c.document_access);
       } else {
-        testing.expectEqual(true, c.document_is_undefined);
+        testing.expectEqual('SecurityError/true', c.document_access);
       }
     });
   });
